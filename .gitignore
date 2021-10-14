@@ -9,3 +9,10 @@ dist/
 coverage/
 .env
 Utilities/TestResults
+
+.cache/
+node_modules/
+*.iml
+idea/
+.projectile
+.idea/
