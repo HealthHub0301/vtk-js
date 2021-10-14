@@ -1,3 +1,4 @@
+/* eslint-disable */
 import * as macro from 'vtk.js/Sources/macros';
 import { vec3, mat3, mat4 } from 'gl-matrix';
 // import vtkBoundingBox       from 'vtk.js/Sources/Common/DataModel/BoundingBox';
@@ -22,9 +23,10 @@ import {
 import { BlendMode } from 'vtk.js/Sources/Rendering/Core/VolumeMapper/Constants';
 
 import vtkVolumeVS from 'vtk.js/Sources/Rendering/OpenGL/glsl/vtkVolumeVS.glsl';
-import vtkVolumeFS from 'vtk.js/Sources/Rendering/OpenGL/glsl/vtkVolumeFS.glsl';
+import vtkVolumeFS from 'vtk.js/Sources/Rendering/OpenGL/glsl/vtkMyVolumeFS.glsl';
 
 import { registerOverride } from 'vtk.js/Sources/Rendering/OpenGL/ViewNodeFactory';
+import { Float32Array } from 'globalthis/implementation';
 
 const { vtkWarningMacro, vtkErrorMacro } = macro;
 
@@ -78,7 +80,9 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
       // Per Component?
       model.scalarTexture.setOpenGLRenderWindow(model.openGLRenderWindow);
       model.colorTexture.setOpenGLRenderWindow(model.openGLRenderWindow);
+      model.scolorTexture.setOpenGLRenderWindow(model.openGLRenderWindow);
       model.opacityTexture.setOpenGLRenderWindow(model.openGLRenderWindow);
+      model.sopacityTexture.setOpenGLRenderWindow(model.openGLRenderWindow);
 
       model.openGLVolume = publicAPI.getFirstAncestorOfType('vtkOpenGLVolume');
       const actor = model.openGLVolume.getRenderable();
@@ -360,8 +364,10 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
     // do we need lighting?
     let lightComplexity = 0;
     if (
-      actor.getProperty().getShade() &&
-      model.renderable.getBlendMode() === BlendMode.COMPOSITE_BLEND
+      (actor.getProperty().getShade() &&
+        model.renderable.getBlendMode() === BlendMode.COMPOSITE_BLEND) ||
+      model.renderable.getBlendMode() === 4 ||
+      model.renderable.getBlendMode() === 5
     ) {
       // consider the lighting complexity to determine which case applies
       // simple headlight, Light Kit, the whole feature set of VTK
@@ -799,7 +805,9 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
     const program = cellBO.getProgram();
 
     program.setUniformi('ctexture', model.colorTexture.getTextureUnit());
+    program.setUniformi('sctexture', model.scolorTexture.getTextureUnit());
     program.setUniformi('otexture', model.opacityTexture.getTextureUnit());
+    program.setUniformi('sotexture', model.sopacityTexture.getTextureUnit());
     program.setUniformi('jtexture', model.jitterTexture.getTextureUnit());
 
     const volInfo = model.scalarTexture.getVolumeInfo();
@@ -1085,7 +1093,9 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
     // render the texture
     model.scalarTexture.activate();
     model.opacityTexture.activate();
+    model.sopacityTexture.activate();
     model.colorTexture.activate();
+    model.scolorTexture.activate();
     model.jitterTexture.activate();
 
     publicAPI.updateShaders(model.tris, ren, actor);
@@ -1099,7 +1109,9 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
 
     model.scalarTexture.deactivate();
     model.colorTexture.deactivate();
+    model.scolorTexture.deactivate();
     model.opacityTexture.deactivate();
+    model.sopacityTexture.deactivate();
     model.jitterTexture.deactivate();
   };
 
@@ -1280,6 +1292,7 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
       const oSize = oWidth * 2 * numIComps;
       const ofTable = new Float32Array(oSize);
       const tmpTable = new Float32Array(oWidth);
+      const sofTable = new Float32Array(oSize);
 
       for (let c = 0; c < numIComps; ++c) {
         const ofun = vprop.getScalarOpacity(c);
@@ -1295,11 +1308,21 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
             1.0 - (1.0 - tmpTable[i]) ** opacityFactor;
           ofTable[c * oWidth * 2 + i + oWidth] = ofTable[c * oWidth * 2 + i];
         }
+        sofTable[c * oWidth * 2] = ofTable[c * oWidth * 2];
+        for (let i = 1; i < oWidth; ++i) {
+          sofTable[c * oWidth * 2 + i] =
+            ofTable[c * oWidth * 2 + i] + sofTable[c * oWidth * 2 + i - 1];
+          sofTable[c * oWidth * 2 + i + oWidth] = sofTable[c * oWidth * 2 + i];
+        }
       }
 
       model.opacityTexture.releaseGraphicsResources(model.openGLRenderWindow);
       model.opacityTexture.setMinificationFilter(Filter.LINEAR);
       model.opacityTexture.setMagnificationFilter(Filter.LINEAR);
+
+      model.sopacityTexture.releaseGraphicsResources(model.openGLRenderWindow);
+      model.sopacityTexture.setMinificationFilter(Filter.LINEAR);
+      model.sopacityTexture.setMagnificationFilter(Filter.LINEAR);
 
       // use float texture where possible because we really need the resolution
       // for this table. Errors in low values of opacity accumulate to
@@ -1317,6 +1340,13 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
           VtkDataTypes.FLOAT,
           ofTable
         );
+        model.sopacityTexture.create2DFromRaw(
+          oWidth,
+          2 * numIComps,
+          1,
+          VtkDataTypes.FLOAT,
+          sofTable
+        );
       } else {
         const oTable = new Uint8Array(oSize);
         for (let i = 0; i < oSize; ++i) {
@@ -1329,6 +1359,18 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
           VtkDataTypes.UNSIGNED_CHAR,
           oTable
         );
+        const soTable = new Float32Array(oSize);
+        soTable[0] = oTable[0];
+        for (let i = 1; i < oSize; ++i) {
+          soTable[i] = oTable[i] + soTable[i - 1];
+        }
+        model.sopacityTexture.create2DFromRaw(
+          oWidth,
+          2 * numIComps,
+          1,
+          VtkDataTypes.FLOAT,
+          soTable
+        );
       }
       model.opacityTextureString = toString;
     }
@@ -1339,6 +1381,7 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
       const cWidth = 1024;
       const cSize = cWidth * 2 * numIComps * 3;
       const cTable = new Uint8Array(cSize);
+      const scTable = new Float32Array(cSize);
       const tmpTable = new Float32Array(cWidth * 3);
 
       for (let c = 0; c < numIComps; ++c) {
@@ -1349,11 +1392,35 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
           cTable[c * cWidth * 6 + i] = 255.0 * tmpTable[i];
           cTable[c * cWidth * 6 + i + cWidth * 3] = 255.0 * tmpTable[i];
         }
+        scTable[c * cWidth * 6 + 0] = tmpTable[0];
+        scTable[c * cWidth * 6 + 1] = tmpTable[1];
+        scTable[c * cWidth * 6 + 2] = tmpTable[2];
+        scTable[c * cWidth * 6 + 0 + cWidth * 3] = tmpTable[0];
+        scTable[c * cWidth * 6 + 1 + cWidth * 3] = tmpTable[1];
+        scTable[c * cWidth * 6 + 2 + cWidth * 3] = tmpTable[2];
+        for (let i = 3; i < cWidth * 3; i += 3) {
+          scTable[c * cWidth * 6 + i + 0] =
+            tmpTable[i + 0] + scTable[c * cWidth * 6 + i + 0 - 3];
+          scTable[c * cWidth * 6 + i + 1] =
+            tmpTable[i + 1] + scTable[c * cWidth * 6 + i + 1 - 3];
+          scTable[c * cWidth * 6 + i + 2] =
+            tmpTable[i + 2] + scTable[c * cWidth * 6 + i + 2 - 3];
+          scTable[c * cWidth * 6 + i + 0 + cWidth * 3] =
+            scTable[c * cWidth * 6 + i + 0];
+          scTable[c * cWidth * 6 + i + 1 + cWidth * 3] =
+            scTable[c * cWidth * 6 + i + 1];
+          scTable[c * cWidth * 6 + i + 2 + cWidth * 3] =
+            scTable[c * cWidth * 6 + i + 2];
+        }
       }
 
       model.colorTexture.releaseGraphicsResources(model.openGLRenderWindow);
       model.colorTexture.setMinificationFilter(Filter.LINEAR);
       model.colorTexture.setMagnificationFilter(Filter.LINEAR);
+
+      model.scolorTexture.releaseGraphicsResources(model.openGLRenderWindow);
+      model.scolorTexture.setMinificationFilter(Filter.LINEAR);
+      model.scolorTexture.setMagnificationFilter(Filter.LINEAR);
 
       model.colorTexture.create2DFromRaw(
         cWidth,
@@ -1361,6 +1428,13 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
         3,
         VtkDataTypes.UNSIGNED_CHAR,
         cTable
+      );
+      model.scolorTexture.create2DFromRaw(
+        cWidth,
+        2 * numIComps,
+        3,
+        VtkDataTypes.FLOAT,
+        scTable
       );
       model.colorTextureString = toString;
     }
@@ -1458,8 +1532,10 @@ const DEFAULT_VALUES = {
   scalarTexture: null,
   scalarTextureString: null,
   opacityTexture: null,
+  sopacityTexture: null,
   opacityTextureString: null,
   colorTexture: null,
+  scolorTexture: null,
   colorTextureString: null,
   jitterTexture: null,
   tris: null,
@@ -1494,7 +1570,9 @@ export function extend(publicAPI, model, initialValues = {}) {
   model.tris = vtkHelper.newInstance();
   model.scalarTexture = vtkOpenGLTexture.newInstance();
   model.opacityTexture = vtkOpenGLTexture.newInstance();
+  model.sopacityTexture = vtkOpenGLTexture.newInstance();
   model.colorTexture = vtkOpenGLTexture.newInstance();
+  model.scolorTexture = vtkOpenGLTexture.newInstance();
   model.jitterTexture = vtkOpenGLTexture.newInstance();
   model.jitterTexture.setWrapS(Wrap.REPEAT);
   model.jitterTexture.setWrapT(Wrap.REPEAT);

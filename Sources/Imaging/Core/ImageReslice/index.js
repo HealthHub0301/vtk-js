@@ -1,3 +1,4 @@
+/* eslint-disable */
 import { vec4, mat4 } from 'gl-matrix';
 
 import macro from 'vtk.js/Sources/macros';
@@ -927,32 +928,55 @@ function vtkImageReslice(publicAPI, model) {
     numscalars === 1 ? publicAPI.set1 : publicAPI.set;
 
   publicAPI.getCompositeFunc = (slabMode, slabTrapezoidIntegration) => {
-    let composite = null;
+    // let composite = null;
     // eslint-disable-next-line default-case
     switch (slabMode) {
       case SlabMode.MIN:
-        composite = getImageResliceCompositeMinValue;
-        break;
+        return;
+      // composite = getImageResliceCompositeMinValue;
+      // break;
       case SlabMode.MAX:
-        composite = getImageResliceCompositeMaxValue;
-        break;
+        return;
+      // composite = getImageResliceCompositeMaxValue;
+      //   break;
       case SlabMode.MEAN:
         if (slabTrapezoidIntegration) {
-          composite = getImageResliceCompositeMeanTrap;
+          return (inPtr, numscalars, n) => {
+            const f = 1.0 / (n - 1);
+            vtkImageResliceSlabTrap(inPtr, numscalars, n, f);
+          };
+          // composite = getImageResliceCompositeMeanTrap;
         } else {
-          composite = getImageResliceCompositeMeanValue;
+          return (inPtr, numscalars, n) => {
+            const f = 1.0 / n;
+            let m = numscalars;
+            --n;
+            do {
+              let inIndex = 0;
+              let result = inPtr[inIndex];
+              let k = n;
+              do {
+                inIndex += numscalars;
+                result += inPtr[inIndex];
+              } while (--k);
+              inIndex == n * numscalars;
+              inPtr[inIndex++] = result * f;
+            } while (--m);
+          };
+          // composite = getImageResliceCompositeMeanValue;
         }
         break;
       case SlabMode.SUM:
-        if (slabTrapezoidIntegration) {
-          composite = getImageResliceCompositeSumTrap;
-        } else {
-          composite = getImageResliceCompositeSumValue;
-        }
-        break;
+        return;
+      // if (slabTrapezoidIntegration) {
+      //   composite = getImageResliceCompositeSumTrap;
+      // } else {
+      //   composite = getImageResliceCompositeSumValue;
+      // }
+      // break;
     }
 
-    return composite;
+    // return composite;
   };
 
   publicAPI.applyTransform = (newTrans, inPoint, inOrigin, inInvSpacing) => {
@@ -1082,7 +1106,7 @@ const DEFAULT_VALUES = {
   mirror: false, // don't mirror
   border: true, // apply a border
   interpolationMode: InterpolationMode.NEAREST, // only NEAREST supported so far
-  slabMode: SlabMode.MIN,
+  slabMode: SlabMode.MEAN,
   slabTrapezoidIntegration: false,
   slabNumberOfSlices: 1,
   slabSliceSpacingFraction: 1,

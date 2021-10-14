@@ -1,3 +1,4 @@
+/* eslint-disable */
 import macro from 'vtk.js/Sources/macros';
 import vtkActor from 'vtk.js/Sources/Rendering/Core/Actor';
 import vtkInteractorObserver from 'vtk.js/Sources/Rendering/Core/InteractorObserver';
@@ -278,6 +279,7 @@ function vtkLabelRepresentation(publicAPI, model) {
 function defaultValues(initialValues) {
   return {
     container: null,
+    positionFix: false,
     labelStyle: {
       fontColor: 'white',
       fontStyle: 'normal',
@@ -328,6 +330,10 @@ export function extend(publicAPI, model, initialValues = {}) {
   model.mapper = vtkPixelSpaceCallbackMapper.newInstance();
   model.mapper.setInputConnection(model.point.getOutputPort());
   model.mapper.setCallback((coordList) => {
+    if (model.positionFix) {
+      return;
+    }
+
     if (model.canvas) {
       let yOffset = 0;
 
@@ -366,8 +372,13 @@ export function extend(publicAPI, model, initialValues = {}) {
     publicAPI.updateLabel();
   });
 
-  macro.setGet(publicAPI, model, ['labelText', 'textAlign', 'verticalAlign']);
-  macro.get(publicAPI, model, ['container', 'labelStyle']);
+  macro.setGet(publicAPI, model, [
+    'labelText',
+    'textAlign',
+    'verticalAlign',
+    'positionFix',
+  ]);
+  macro.get(publicAPI, model, ['container', 'labelStyle', 'canvas']);
 
   // Object methods
   vtkLabelRepresentation(publicAPI, model);
