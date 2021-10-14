@@ -6,21 +6,26 @@ import vtkPixelSpaceCallbackMapper from 'vtk.js/Sources/Rendering/Core/PixelSpac
 import vtkPointSource from 'vtk.js/Sources/Filters/Sources/PointSource';
 import vtkHandleRepresentation from 'vtk.js/Sources/Interaction/Widgets/HandleRepresentation';
 
+
 import {
   TextAlign,
   VerticalAlign,
 } from 'vtk.js/Sources/Interaction/Widgets/LabelRepresentation/Constants';
 import { InteractionState } from 'vtk.js/Sources/Interaction/Widgets/HandleRepresentation/Constants';
 
+
 // ----------------------------------------------------------------------------
 // vtkLabelRepresentation methods
 // ----------------------------------------------------------------------------
+
 
 function vtkLabelRepresentation(publicAPI, model) {
   // Set our className
   model.classHierarchy.push('vtkLabelRepresentation');
 
+
   const superClass = Object.assign({}, publicAPI);
+
 
   function getCanvasPosition() {
     if (model.canvas) {
@@ -32,24 +37,31 @@ function vtkLabelRepresentation(publicAPI, model) {
     return null;
   }
 
+
   publicAPI.buildRepresentation = () => {
     if (model.labelText !== null) {
       publicAPI.setLabelText(model.labelText);
     }
 
+
     publicAPI.modified();
   };
 
+
   publicAPI.getActors = () => [model.actor];
 
+
   publicAPI.getNestedProps = () => publicAPI.getActors();
+
 
   publicAPI.computeInteractionState = (pos) => {
     if (model.canvas) {
       const height = model.canvas.height;
       const width = model.canvas.width;
 
+
       const canvasPosition = getCanvasPosition();
+
 
       if (
         pos[0] >= canvasPosition.left &&
@@ -65,17 +77,21 @@ function vtkLabelRepresentation(publicAPI, model) {
     return model.interactionState;
   };
 
+
   publicAPI.startComplexWidgetInteraction = (startEventPos) => {
     // Record the current event position, and the rectilinear wipe position.
     model.startEventPosition[0] = startEventPos[0];
     model.startEventPosition[1] = startEventPos[1];
     model.startEventPosition[2] = 0.0;
 
+
     model.lastEventPosition[0] = startEventPos[0];
     model.lastEventPosition[1] = startEventPos[1];
   };
 
+
   publicAPI.complexWidgetInteraction = (eventPos) => {
+    return;
     if (model.interactionState === InteractionState.SELECTING) {
       const center = model.point.getCenter();
       const displayCenter = vtkInteractorObserver.computeWorldToDisplay(
@@ -86,12 +102,14 @@ function vtkLabelRepresentation(publicAPI, model) {
       );
       const focalDepth = displayCenter[2];
 
+
       const worldStartEventPosition = vtkInteractorObserver.computeDisplayToWorld(
         model.renderer,
         model.lastEventPosition[0],
         model.lastEventPosition[1],
         focalDepth
       );
+
 
       const worldCurrentPosition = vtkInteractorObserver.computeDisplayToWorld(
         model.renderer,
@@ -100,36 +118,46 @@ function vtkLabelRepresentation(publicAPI, model) {
         focalDepth
       );
 
+
       publicAPI.moveFocus(worldStartEventPosition, worldCurrentPosition);
+
 
       model.lastEventPosition[0] = eventPos[0];
       model.lastEventPosition[1] = eventPos[1];
+
 
       publicAPI.modified();
     }
   };
 
+
   publicAPI.setWorldPosition = (position) => {
     model.point.setCenter(position);
     superClass.setWorldPosition(model.point.getCenter());
 
+
     publicAPI.modified();
   };
+
 
   publicAPI.setDisplayPosition = (position) => {
     superClass.setDisplayPosition(position);
     publicAPI.setWorldPosition(model.worldPosition.getValue());
   };
 
+
   publicAPI.moveFocus = (start, end) => {
     const motionVector = [];
     vtkMath.subtract(end, start, motionVector);
 
+
     const focus = model.point.getCenter();
     vtkMath.add(focus, motionVector, focus);
 
+
     publicAPI.setWorldPosition(focus);
   };
+
 
   publicAPI.getBounds = () => {
     const center = model.point.getCenter();
@@ -143,27 +171,34 @@ function vtkLabelRepresentation(publicAPI, model) {
     return bounds;
   };
 
+
   publicAPI.setContainer = (container) => {
     if (model.container && model.container !== container) {
       model.container.removeChild(model.canvas);
     }
 
+
     if (model.container !== container) {
       model.container = container;
+
 
       if (model.container) {
         model.container.appendChild(model.canvas);
       }
 
+
       publicAPI.modified();
     }
   };
 
+
   publicAPI.setLabelStyle = (labelStyle) => {
     model.labelStyle = Object.assign({}, model.labelStyle, labelStyle);
 
+
     publicAPI.modified();
   };
+
 
   publicAPI.setSelectLabelStyle = (selectLabelStyle) => {
     model.selectLabelStyle = Object.assign(
@@ -172,26 +207,33 @@ function vtkLabelRepresentation(publicAPI, model) {
       selectLabelStyle
     );
 
+
     publicAPI.modified();
   };
+
 
   publicAPI.computeTextDimensions = (text) => {
     const currentLabelStyle = model.highlight
       ? model.selectLabelStyle
       : model.labelStyle;
 
+
     const separatorRegExp = /\r?\n/;
     const separatorRes = separatorRegExp.exec(text);
     const separator = separatorRes !== null ? separatorRes[0] : null;
     const lines = text.split(separator);
 
+
     const lineSpace =
       currentLabelStyle.fontSize * (1 + currentLabelStyle.lineSpace);
 
+
     const padding = currentLabelStyle.fontSize / 4;
+
 
     const height =
       2 * padding + currentLabelStyle.fontSize + (lines.length - 1) * lineSpace;
+
 
     const width = lines.reduce(
       (maxWidth, line) =>
@@ -199,19 +241,23 @@ function vtkLabelRepresentation(publicAPI, model) {
       0
     );
 
+
     return { width, height, lineSpace, padding, lines };
   };
+
 
   publicAPI.updateLabel = () => {
     if (model.context && model.canvas) {
       // Clear canvas
       model.context.clearRect(0, 0, model.canvas.width, model.canvas.height);
 
+
       // Render text
       if (model.actor.getVisibility()) {
         const currentLabelStyle = model.highlight
           ? model.selectLabelStyle
           : model.labelStyle;
+
 
         const {
           width,
@@ -221,8 +267,10 @@ function vtkLabelRepresentation(publicAPI, model) {
           lines,
         } = publicAPI.computeTextDimensions(model.labelText);
 
+
         model.canvas.height = Math.round(height);
         model.canvas.width = width + 2 * padding;
+
 
         // Update label style
         model.context.strokeStyle = currentLabelStyle.strokeColor;
@@ -232,9 +280,11 @@ function vtkLabelRepresentation(publicAPI, model) {
           currentLabelStyle.fontSize
         }px ${currentLabelStyle.fontFamily}`;
 
+
         // Update canvas dimensions
         const x = padding;
         let y = currentLabelStyle.fontSize;
+
 
         // Add text
         lines.forEach((line) => {
@@ -253,10 +303,12 @@ function vtkLabelRepresentation(publicAPI, model) {
     }
   };
 
+
   publicAPI.highlight = (highlight) => {
     model.highlight = highlight;
     publicAPI.modified();
   };
+
 
   publicAPI.getCanvasSize = () => {
     if (model.canvas) {
@@ -269,12 +321,15 @@ function vtkLabelRepresentation(publicAPI, model) {
   };
 }
 
+
 // ----------------------------------------------------------------------------
 // Object factory
 // ----------------------------------------------------------------------------
 
+
 const DEFAULT_VALUES = {
   container: null,
+  positionFix: false,
   labelStyle: {
     fontColor: 'white',
     fontStyle: 'normal',
@@ -288,9 +343,9 @@ const DEFAULT_VALUES = {
   textAlign: TextAlign.LEFT,
   verticalAlign: VerticalAlign.BOTTOM,
   selectLabelStyle: {
-    fontColor: 'rgb(0, 255, 0)',
+    fontColor: 'white',
     fontStyle: 'normal',
-    fontSize: 15,
+    fontSize: 10,
     fontFamily: 'Arial',
     strokeColor: 'black',
     strokeSize: 1,
@@ -298,33 +353,47 @@ const DEFAULT_VALUES = {
   },
 };
 
+
 // ----------------------------------------------------------------------------
+
 
 export function extend(publicAPI, model, initialValues = {}) {
   Object.assign(model, DEFAULT_VALUES, initialValues);
 
+
   // Inheritance
   vtkHandleRepresentation.extend(publicAPI, model, initialValues);
 
+
   publicAPI.setPlaceFactor(1);
+
 
   // Canvas
   model.canvas = document.createElement('canvas');
   model.canvas.style.position = 'absolute';
 
+
   // Context
   model.context = model.canvas.getContext('2d');
+
 
   // PixelSpaceCallbackMapper
   model.point = vtkPointSource.newInstance();
   model.point.setNumberOfPoints(1);
   model.point.setRadius(0);
 
+
   model.mapper = vtkPixelSpaceCallbackMapper.newInstance();
   model.mapper.setInputConnection(model.point.getOutputPort());
   model.mapper.setCallback((coordList) => {
+    if(model.positionFix){
+      return;
+    }
+
+
     if (model.canvas) {
       let yOffset = 0;
+
 
       if (model.verticalAlign === VerticalAlign.BOTTOM) {
         yOffset = -model.canvas.height;
@@ -332,42 +401,55 @@ export function extend(publicAPI, model, initialValues = {}) {
         yOffset = -0.5 * model.canvas.height;
       }
 
+
       model.canvas.style.left = `${Math.round(coordList[0][0])}px`;
       model.canvas.style.bottom = `${Math.round(coordList[0][1] + yOffset)}px`;
+
 
       publicAPI.modified();
     }
   });
+
 
   model.actor = vtkActor.newInstance();
   model.actor.setMapper(model.mapper);
   model.actorVisibility = true;
 
+
   model.highlight = false;
+
 
   model.actor.onModified(() => {
     if (model.actorVisibility !== model.actor.getVisibility()) {
       model.actorVisibility = model.actor.getVisibility();
 
+
       publicAPI.modified();
     }
   });
+
 
   publicAPI.onModified(() => {
     publicAPI.updateLabel();
   });
 
-  macro.setGet(publicAPI, model, ['labelText', 'textAlign', 'verticalAlign']);
-  macro.get(publicAPI, model, ['container', 'labelStyle']);
+
+  macro.setGet(publicAPI, model, ['labelText', 'textAlign', 'verticalAlign', 'positionFix']);
+  macro.get(publicAPI, model, ['container', 'labelStyle', 'canvas',]);
+
 
   // Object methods
   vtkLabelRepresentation(publicAPI, model);
 }
 
+
 // ----------------------------------------------------------------------------
+
 
 export const newInstance = macro.newInstance(extend, 'vtkLabelRepresentation');
 
+
 // ----------------------------------------------------------------------------
+
 
 export default { newInstance, extend };

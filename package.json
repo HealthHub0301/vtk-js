@@ -1,6 +1,6 @@
 {
   "name": "vtk.js",
-  "version": "0.0.0-semantically-release",
+  "version": "13.18.2-rev1",
   "description": "Visualization Toolkit for the Web",
   "keywords": [
     "3d",
@@ -18,6 +18,9 @@
     "graphics",
     "paraviewweb"
   ],
+  "publishConfig": {
+    "registry": "http://repo.healthhub.kr/repository/npm-private/"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/kitware/vtk-js.git"

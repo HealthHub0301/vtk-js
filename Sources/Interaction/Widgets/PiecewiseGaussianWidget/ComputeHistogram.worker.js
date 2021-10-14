@@ -1,5 +1,6 @@
 import registerWebworker from 'webworker-promise/lib/register';
 
+
 /* eslint-disable */
 // prettier-ignore
 registerWebworker(function (message, emit) {
@@ -7,8 +8,10 @@ registerWebworker(function (message, emit) {
   var min = message.min;
   var max = message.max;
 
+
   var offset = message.component || 0;
   var step = message.numberOfComponents || 1;
+
 
   var numberOfBins = message.numberOfBins;
   var delta = max - min;
@@ -21,6 +24,12 @@ registerWebworker(function (message, emit) {
     );
     histogram[idx] += 1;
   }
+
+
+  for(var j=0; j<numberOfBins; j++) {
+    histogram[j] = Math.sqrt(histogram[j]);
+  }
+
 
   return Promise.resolve(
     new registerWebworker.TransferableResponse(histogram, [histogram.buffer])
