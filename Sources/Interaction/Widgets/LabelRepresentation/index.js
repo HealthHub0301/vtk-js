@@ -1,3 +1,4 @@
+/* eslint-disable */
 import macro from 'vtk.js/Sources/macro';
 import vtkActor from 'vtk.js/Sources/Rendering/Core/Actor';
 import vtkInteractorObserver from 'vtk.js/Sources/Rendering/Core/InteractorObserver';

@@ -1,3 +1,4 @@
+/* eslint-disable */
 import macro from 'vtk.js/Sources/macro';
 import vtkHandleWidget from 'vtk.js/Sources/Interaction/Widgets/HandleWidget';
 import vtkLabelRepresentation from 'vtk.js/Sources/Interaction/Widgets/LabelRepresentation';

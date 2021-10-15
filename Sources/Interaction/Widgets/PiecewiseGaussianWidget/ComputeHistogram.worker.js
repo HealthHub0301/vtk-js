@@ -1,3 +1,4 @@
+/* eslint-disable */
 import registerWebworker from 'webworker-promise/lib/register';
 
 
