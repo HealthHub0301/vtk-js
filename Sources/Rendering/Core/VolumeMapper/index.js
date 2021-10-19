@@ -62,6 +62,8 @@ const DEFAULT_VALUES = {
   autoAdjustSampleDistances: true,
   blendMode: BlendMode.COMPOSITE_BLEND,
   averageIPScalarRange: [-1000000.0, 1000000.0],
+  cprScale: 1.0,
+  cprCenter: [0.0, 0.0],
 };
 
 // ----------------------------------------------------------------------------
@@ -79,6 +81,8 @@ export function extend(publicAPI, model, initialValues = {}) {
     'maximumSamplesPerRay',
     'autoAdjustSampleDistances',
     'blendMode',
+    'cprScale',
+    'cprCenter',
   ]);
 
   macro.setGetArray(publicAPI, model, ['averageIPScalarRange'], 2);

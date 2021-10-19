@@ -667,6 +667,12 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
     program.setUniformf('lowerGreyLevel', adjustedLowerGreyLevel);
     program.setUniformf('upperGreyLevel', adjustedUpperGreyLevel);
 
+    const canvasSize = model.openGLRenderWindow.getSize();
+    program.setUniform2f('canvasSize', canvasSize[0], canvasSize[1]);
+    program.setUniformf('cprScale', model.renderable.getCprScale());
+    const cprCenter = model.renderable.getCprCenter();
+    program.setUniform2f('cprCenter', cprCenter[0], cprCenter[1]);
+
     if(DATA.CPR != null && DATA.CPR.imageToPositionMap != null){
       program.setUniformf('ciwidth', DATA.CPR.CPRPoints.length);
       program.setUniformf('ciheight',DATA.CPR.imageWidth);

@@ -43,9 +43,6 @@ uniform mat4 PCWCMatrix;
 uniform mat4 vWCtoIDX;
 #endif
 
-
-
-
 // define vtkLightComplexity
 //VTK::LightComplexity
 #if vtkLightComplexity > 0
@@ -123,6 +120,8 @@ uniform sampler2D citexture;
 uniform float cprThickness;
 uniform float ciwidth;
 uniform float ciheight;
+uniform float cprScale;
+uniform vec2 cprCenter;
 
 // GradientOpacity의 threshold 값
 uniform float GradientOpacityThreshold;
@@ -130,6 +129,9 @@ uniform float GradientOpacityThreshold;
 // windowing 값
 uniform float lowerGreyLevel;
 uniform float upperGreyLevel;
+
+// canvas 크기의 pixel size
+uniform vec2 canvasSize;
 
 // jitter texture
 uniform sampler2D jtexture;
@@ -1126,13 +1128,19 @@ void applyBlend(vec3 posIS, vec3 endIS, float sampleDistanceIS, vec3 tdims)
   #if vtkBlendMode == 6
 
   //gl_fragcoord 는 pixel 좌표입니다. 픽셀좌표를 해상도로 나누어서 0~1범위로 로 변경합니다.
-  vec2 st = gl_FragCoord.xy / vec2(300, 300);
+  vec2 st = gl_FragCoord.xy / canvasSize;
+
+  float cprWidth = ciwidth * cprScale;
+  float cprHeight = ciheight * cprScale;
   
   //1pixel 당 1mm로 이미지 크기 고정
-  float sideX = (1.0 - ciwidth  / 300.0) * 0.5;
-  float sideY = (1.0 - ciheight / 300.0) * 0.5;
+  float sideX = (1.0 - cprWidth  / canvasSize.x) * 0.5;
+  float sideY = (1.0 - cprHeight / canvasSize.y) * 0.5;
   
-  if(ciwidth < 300.0){
+  st.x = st.x + cprCenter.x;
+  st.y = st.y + cprCenter.y;
+
+  if(ciwidth < canvasSize.x){
     
     if(st.x < sideX){
       gl_FragData[0] = vec4(0.0, 0.0, 0.0, 1.0);
@@ -1143,13 +1151,13 @@ void applyBlend(vec3 posIS, vec3 endIS, float sampleDistanceIS, vec3 tdims)
       return;
     }
 
-    st.x = (st.x - sideX) * 300.0 / ciwidth;
+    st.x = (st.x - sideX) * canvasSize.x / cprWidth;
   }
   else{
-    st.x = st.x * 300.0 / ciwidth + (1.0 - 300.0 / ciwidth) * 0.5;
+    st.x = st.x * canvasSize.x / cprWidth + (1.0 - canvasSize.x / cprWidth) * 0.5;
   }
   
-  if(ciheight < 300.0){
+  if(cprHeight < canvasSize.y){
     
     if(st.y < sideY){
       gl_FragData[0] = vec4(0.0, 0.0, 0.0, 1.0);
@@ -1160,45 +1168,11 @@ void applyBlend(vec3 posIS, vec3 endIS, float sampleDistanceIS, vec3 tdims)
       return;
     }
 
-    st.y = (st.y - sideY) * 300.0 / ciheight;
+    st.y = (st.y - sideY) * canvasSize.y / cprHeight;
   }
   else{
-    st.y = st.y * 300.0 / ciheight + (1.0 - 300.0 / ciheight) * 0.5;
+    st.y = st.y * canvasSize.y / cprHeight + (1.0 - canvasSize.y / cprHeight) * 0.5;
   }
-  
-  //이미지의 width, height를 frag coord에 맞춥니다.
-  //이미지의 width, height가 1:1이 안되면 이미지가 늘려지는 현상이 발생합니다.
-  //따라서 이미지의 비율대로 fragg coord를 잘라서 사용합니다.
-
-
-  // if(ciwidth < ciheight){
-  //  float side = (1.0 -  ciwidth / ciheight) * 0.5 ;
-  
-  //  if(st.x < side){
-  //    gl_FragData[0] = vec4(0.0, 0.0, 0.0, 1.0);
-  //    return;
-  //  }
-  //  else if(st.x >= 1.0 - side){
-  //    gl_FragData[0] = vec4(0.0, 0.0, 0.0, 1.0);
-  //    return;
-  //  }
-  
-  //  st.x = (st.x - side) * ciheight / ciwidth;
-  // }
-  // else{
-  //  float side = (1.0 - ciheight / ciwidth) * 0.5 ;
-  
-  //  if(st.y < side){
-  //    gl_FragData[0] = vec4(0.0, 0.0, 0.0, 1.0);
-  //    return;
-  //  }
-  //  else if(st.y >= 1.0 - side){
-  //    gl_FragData[0] = vec4(0.0, 0.0, 0.0, 1.0);
-  //    return;
-  //  }
-  
-  //  st.y = (st.y - side) * ciwidth / ciheight;
-  // }
 
   //spline의 가속도와 cpr 진행 방향, image의 xyz volume 좌표를 얻어옵니다.
   vec4 vel = texture2D(cvtexture, vec2(st.x, 0.5));
