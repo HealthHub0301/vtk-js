@@ -4,6 +4,7 @@ import vtkBufferObject from './BufferObject';
 import vtkCamera from './Camera';
 import vtkCellArrayBufferObject from './CellArrayBufferObject';
 import vtkConvolution2DPass from './Convolution2DPass';
+import vtkForwardPass from './ForwardPass';
 import vtkFramebuffer from './Framebuffer';
 import vtkGlyph3DMapper from './Glyph3DMapper';
 import vtkHardwareSelector from './HardwareSelector';
@@ -12,6 +13,7 @@ import vtkImageMapper from './ImageMapper';
 import vtkImageSlice from './ImageSlice';
 import vtkPixelSpaceCallbackMapper from './PixelSpaceCallbackMapper';
 import vtkPolyDataMapper from './PolyDataMapper';
+import vtkPolyDataMapper2D from './PolyDataMapper2D';
 import vtkRenderer from './Renderer';
 import vtkRenderWindow from './RenderWindow';
 import vtkShader from './Shader';
@@ -34,6 +36,7 @@ export default {
   vtkCamera,
   vtkCellArrayBufferObject,
   vtkConvolution2DPass,
+  vtkForwardPass,
   vtkFramebuffer,
   vtkGlyph3DMapper,
   vtkHardwareSelector,
@@ -42,6 +45,7 @@ export default {
   vtkImageSlice,
   vtkPixelSpaceCallbackMapper,
   vtkPolyDataMapper,
+  vtkPolyDataMapper2D,
   vtkRenderer,
   vtkRenderWindow,
   vtkShader,

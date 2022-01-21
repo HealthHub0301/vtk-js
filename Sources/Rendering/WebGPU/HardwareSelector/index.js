@@ -72,6 +72,7 @@ function getPixelInformationWithData(
           buffdata.zbufferBufferWidth +
         inDisplayPosition[0];
       info.zValue = buffdata.depthValues[offset];
+      info.zValue = buffdata.webGPURenderer.convertToOpenGLDepth(info.zValue);
       info.displayPosition = inDisplayPosition;
     }
     return info;
@@ -275,11 +276,15 @@ function vtkWebGPUHardwareSelector(publicAPI, model) {
       return false;
     }
 
+    // todo revisit making selection part of core
+    // then we can do this in core
+    model.WebGPURenderWindow.getRenderable().preRender();
+
     if (!model.WebGPURenderWindow.getInitialized()) {
       model.WebGPURenderWindow.initialize();
-      await new Promise((resolve) =>
-        model.WebGPURenderWindow.onInitialized(resolve)
-      );
+      await new Promise((resolve) => {
+        model.WebGPURenderWindow.onInitialized(resolve);
+      });
     }
 
     const webGPURenderer = model.WebGPURenderWindow.getViewNodeFor(renderer);

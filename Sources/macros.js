@@ -74,6 +74,7 @@ export function vtkWarningMacro(...args) {
 }
 
 const ERROR_ONCE_MAP = {};
+
 export function vtkOnceErrorMacro(str) {
   if (!ERROR_ONCE_MAP[str]) {
     loggerFunctions.error(str);
@@ -132,6 +133,7 @@ export function formatBytesToProperUnit(size, precision = 2, chunkSize = 1000) {
   }
   return `${value.toFixed(precision)} ${currentUnit}`;
 }
+
 // ----------------------------------------------------------------------------
 // Convert thousand number with proper separator
 // ----------------------------------------------------------------------------
@@ -234,6 +236,7 @@ export function obj(publicAPI = {}, model = {}) {
     function unsubscribe() {
       off(index);
     }
+
     return Object.freeze({
       unsubscribe,
     });
@@ -298,8 +301,8 @@ export function obj(publicAPI = {}, model = {}) {
             `Warning: Set value to model directly ${name}, ${map[name]}`
           );
         }
+        ret = model[name] !== map[name] || ret;
         model[name] = map[name];
-        ret = true;
       }
     });
     return ret;
@@ -511,7 +514,8 @@ export function setGet(publicAPI, model, fieldNames) {
 
 export function getArray(publicAPI, model, fieldNames) {
   fieldNames.forEach((field) => {
-    publicAPI[`get${capitalize(field)}`] = () => [].concat(model[field]);
+    publicAPI[`get${capitalize(field)}`] = () =>
+      model[field] ? [].concat(model[field]) : model[field];
     publicAPI[`get${capitalize(field)}ByReference`] = () => model[field];
   });
 }
@@ -530,6 +534,12 @@ export function setArray(
   defaultVal = undefined
 ) {
   fieldNames.forEach((field) => {
+    if (model[field] && size && model[field].length !== size) {
+      throw new RangeError(
+        `Invalid initial number of values for array (${field})`
+      );
+    }
+
     publicAPI[`set${capitalize(field)}`] = (...args) => {
       if (model.deleted) {
         vtkErrorMacro('instance deleted - cannot call any method');
@@ -537,33 +547,43 @@ export function setArray(
       }
 
       let array = args;
-      // allow an array passed as a single arg.
-      if (array.length === 1 && array[0].length) {
+      let changeDetected;
+      let needCopy = false;
+      // allow null or an array to be passed as a single arg.
+      if (array.length === 1 && (array[0] == null || array[0].length >= 0)) {
         /* eslint-disable prefer-destructuring */
         array = array[0];
         /* eslint-enable prefer-destructuring */
+        needCopy = true;
       }
-
-      if (array.length !== size) {
-        if (array.length < size && defaultVal !== undefined) {
+      if (array == null) {
+        changeDetected = model[field] !== array;
+      } else {
+        if (size && array.length !== size) {
+          if (array.length < size && defaultVal !== undefined) {
+            array = Array.from(array);
+            needCopy = false;
+            while (array.length < size) array.push(defaultVal);
+          } else {
+            throw new RangeError(
+              `Invalid number of values for array setter (${field})`
+            );
+          }
+        }
+        changeDetected =
+          model[field] == null ||
+          model[field].some((item, index) => item !== array[index]) ||
+          model[field].length !== array.length;
+        if (changeDetected && needCopy) {
           array = Array.from(array);
-          while (array.length < size) array.push(defaultVal);
-        } else {
-          throw new RangeError(
-            `Invalid number of values for array setter (${field})`
-          );
         }
       }
-      const changeDetected = model[field].some(
-        (item, index) => item !== array[index]
-      );
 
-      if (changeDetected || model[field].length !== array.length) {
-        model[field] = Array.from(array);
+      if (changeDetected) {
+        model[field] = array;
         publicAPI.modified();
-        return true;
       }
-      return false;
+      return changeDetected;
     };
 
     publicAPI[`set${capitalize(field)}From`] = (otherArray) => {
@@ -672,13 +692,27 @@ export function algo(publicAPI, model, numberOfInputs, numberOfOutputs) {
     return model.inputConnection[port];
   }
 
+  function getPortToFill() {
+    let portToFill = model.numberOfInputs;
+    while (
+      portToFill &&
+      !model.inputData[portToFill - 1] &&
+      !model.inputConnection[portToFill - 1]
+    ) {
+      portToFill--;
+    }
+    if (portToFill === model.numberOfInputs) {
+      model.numberOfInputs++;
+    }
+    return portToFill;
+  }
+
   function addInputConnection(outputPort) {
     if (model.deleted) {
       vtkErrorMacro('instance deleted - cannot call any method');
       return;
     }
-    model.numberOfInputs++;
-    setInputConnection(outputPort, model.numberOfInputs - 1);
+    setInputConnection(outputPort, getPortToFill());
   }
 
   function addInputData(dataset) {
@@ -686,8 +720,7 @@ export function algo(publicAPI, model, numberOfInputs, numberOfOutputs) {
       vtkErrorMacro('instance deleted - cannot call any method');
       return;
     }
-    model.numberOfInputs++;
-    setInputData(dataset, model.numberOfInputs - 1);
+    setInputData(dataset, getPortToFill());
   }
 
   function getOutputData(port = 0) {
@@ -703,17 +736,13 @@ export function algo(publicAPI, model, numberOfInputs, numberOfOutputs) {
 
   publicAPI.shouldUpdate = () => {
     const localMTime = publicAPI.getMTime();
-    let count = numberOfOutputs;
     let minOutputMTime = Infinity;
+
+    let count = numberOfOutputs;
     while (count--) {
-      if (!model.output[count]) {
+      if (!model.output[count] || model.output[count].isDeleted()) {
         return true;
       }
-
-      if (model.output[count].isDeleted()) {
-        return true;
-      }
-
       const mt = model.output[count].getMTime();
       if (mt < localMTime) {
         return true;
@@ -726,22 +755,13 @@ export function algo(publicAPI, model, numberOfInputs, numberOfOutputs) {
     count = model.numberOfInputs;
     while (count--) {
       if (
-        model.inputConnection[count] &&
-        model.inputConnection[count].filter.shouldUpdate()
+        model.inputConnection[count]?.filter.shouldUpdate() ||
+        publicAPI.getInputData(count)?.getMTime() > minOutputMTime
       ) {
         return true;
       }
     }
 
-    count = model.numberOfInputs;
-    while (count--) {
-      if (
-        publicAPI.getInputData(count) &&
-        publicAPI.getInputData(count).getMTime() > minOutputMTime
-      ) {
-        return true;
-      }
-    }
     return false;
   };
 
@@ -845,6 +865,7 @@ export function event(publicAPI, model, eventName) {
     function unsubscribe() {
       off(callbackID);
     }
+
     return Object.freeze({
       unsubscribe,
     });
@@ -1120,6 +1141,7 @@ export function proxy(publicAPI, model) {
       }
     }
   }
+
   registerProperties(model.ui, ROOT_GROUP_NAME);
 
   publicAPI.updateUI = (ui) => {
@@ -1349,6 +1371,7 @@ export function proxy(publicAPI, model) {
       }
     }
   }
+
   setImmediateVTK(registerLinks);
 }
 

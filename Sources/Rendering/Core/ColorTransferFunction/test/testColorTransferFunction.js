@@ -14,9 +14,9 @@ import { areEquals } from 'vtk.js/Sources/Common/Core/Math';
 
 import baseline from './testColorTransferFunction.png';
 
-test('Test Interpolate Scalars Before Colors', (t) => {
+test('Test Color Transfer Function', (t) => {
   const gc = testUtils.createGarbageCollector(t);
-  t.ok('rendering', 'vtkOpenGLPolyDataMapper ColorTransferFunction');
+  t.ok('rendering', 'vtkMapper ColorTransferFunction');
 
   // Create some control UI
   const container = document.querySelector('body');
@@ -114,7 +114,7 @@ test('Test Interpolate Scalars Before Colors', (t) => {
       [baseline],
       'Rendering/Core/ColorTransferFunction/testColorTransferFunction',
       t,
-      1.5,
+      5,
       gc.releaseResources
     );
   });

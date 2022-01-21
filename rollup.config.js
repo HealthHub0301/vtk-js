@@ -12,11 +12,12 @@ import json from '@rollup/plugin-json';
 import nodePolyfills from 'rollup-plugin-polyfill-node';
 import { nodeResolve } from '@rollup/plugin-node-resolve';
 import postcss from 'rollup-plugin-postcss';
-import replace from 'rollup-plugin-re';
 import { string } from 'rollup-plugin-string';
 import svgo from 'rollup-plugin-svgo';
 import webworkerLoader from 'rollup-plugin-web-worker-loader';
 import copy from 'rollup-plugin-copy';
+
+import pkg from './package.json';
 
 import { rewriteFilenames } from './Utilities/rollup/plugin-rewrite-filenames';
 
@@ -53,6 +54,9 @@ entryPoints.forEach((entry) => {
 });
 
 const outputDir = path.resolve('dist', 'esm');
+
+const dependencies = Object.keys(pkg.dependencies || []);
+const peerDependencies = Object.keys(pkg.peerDependencies || []);
 
 export default {
   input: entries,
@@ -95,39 +99,11 @@ export default {
       return name.replace(/^Sources[/\\]/, '');
     },
   },
-  external: [/@babel\/runtime/],
+  external: [
+    ...dependencies.map((name) => new RegExp(`^${name}`)),
+    ...peerDependencies.map((name) => new RegExp(`^${name}`)),
+  ],
   plugins: [
-    // should be before commonjs
-    replace({
-      patterns: [
-        {
-          // match against jszip/lib/load.js
-          // Workaround until https://github.com/Stuk/jszip/pull/731 is merged
-          include: path.resolve(
-            __dirname,
-            'node_modules',
-            'jszip',
-            'lib',
-            'load.js'
-          ),
-          test: /'use strict';\nvar utils = require\('.\/utils'\);/m,
-          replace: "'use strict'",
-        },
-        {
-          // match against jszip/lib/compressedObject.js
-          // Workaround until https://github.com/Stuk/jszip/pull/731 is merged
-          include: path.resolve(
-            __dirname,
-            'node_modules',
-            'jszip',
-            'lib',
-            'compressedObject.js'
-          ),
-          test: /Crc32Probe'\);\nvar DataLengthProbe = require\('.\/stream\/DataLengthProbe'\);/m,
-          replace: "Crc32Probe');\n",
-        },
-      ],
-    }),
     alias({
       entries: [
         { find: 'vtk.js', replacement: path.resolve(__dirname) },
@@ -140,9 +116,10 @@ export default {
       targetPlatform: 'browser',
       // needs to match the full import statement path
       pattern: /^.+\.worker(?:\.js)?$/,
-      // inline: true,
-      // preserveSource: true,
-      // outputFolder: 'WebWorkers',
+      // inline externals for webworkers
+      external: [],
+      inline: true,
+      preserveSource: true,
     }),
     nodeResolve({
       // don't rely on node builtins for web

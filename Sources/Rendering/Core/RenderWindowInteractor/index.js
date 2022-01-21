@@ -12,11 +12,13 @@ const { vtkWarningMacro, vtkErrorMacro, normalizeWheel, vtkOnceErrorMacro } =
 // ----------------------------------------------------------------------------
 
 const deviceInputMap = {
-  'OpenVR Gamepad': [
-    Input.TrackPad,
+  'xr-standard': [
     Input.Trigger,
     Input.Grip,
-    Input.ApplicationMenu,
+    Input.TrackPad,
+    Input.Thumbstick,
+    Input.A,
+    Input.B,
   ],
 };
 
@@ -57,6 +59,7 @@ const handledEvents = [
   'StartInteraction',
   'Interaction',
   'EndInteraction',
+  'AnimationFrameRateUpdate',
 ];
 
 function preventDefault(event) {
@@ -366,7 +369,9 @@ function vtkRenderWindowInteractor(publicAPI, model) {
       return;
     }
     animationRequesters.add(requestor);
-    if (animationRequesters.size === 1) {
+    if (animationRequesters.size === 1 && !model.xrAnimation) {
+      model._animationStartTime = Date.now();
+      model._animationFrameCount = 0;
       model.lastFrameTime = 0.1;
       model.lastFrameStart = Date.now();
       model.animationRequest = requestAnimationFrame(publicAPI.handleAnimation);
@@ -375,7 +380,7 @@ function vtkRenderWindowInteractor(publicAPI, model) {
   };
 
   publicAPI.isAnimating = () =>
-    model.vrAnimation || model.animationRequest !== null;
+    model.xrAnimation || model.animationRequest !== null;
 
   publicAPI.cancelAnimation = (requestor, skipWarning = false) => {
     if (!animationRequesters.has(requestor)) {
@@ -398,72 +403,82 @@ function vtkRenderWindowInteractor(publicAPI, model) {
     }
   };
 
-  publicAPI.switchToVRAnimation = () => {
+  publicAPI.switchToXRAnimation = () => {
     // cancel existing animation if any
     if (model.animationRequest) {
       cancelAnimationFrame(model.animationRequest);
       model.animationRequest = null;
     }
-    model.vrAnimation = true;
+    model.xrAnimation = true;
   };
 
-  publicAPI.returnFromVRAnimation = () => {
-    model.vrAnimation = false;
+  publicAPI.returnFromXRAnimation = () => {
+    model.xrAnimation = false;
     if (animationRequesters.size !== 0) {
       model.FrameTime = -1;
       model.animationRequest = requestAnimationFrame(publicAPI.handleAnimation);
     }
   };
 
-  publicAPI.updateGamepads = (displayId) => {
-    const gamepads = navigator.getGamepads();
-
+  publicAPI.updateXRGamepads = (xrSession, xrFrame, xrRefSpace) => {
     // watch for when buttons change state and fire events
-    for (let i = 0; i < gamepads.length; ++i) {
-      const gp = gamepads[i];
-      if (gp && gp.displayId === displayId) {
+    xrSession.inputSources.forEach((inputSource) => {
+      const gripPose =
+        inputSource.gripSpace == null
+          ? null
+          : xrFrame.getPose(inputSource.gripSpace, xrRefSpace);
+      const gp = inputSource.gamepad;
+      const hand = inputSource.handedness;
+      if (gp) {
         if (!(gp.index in model.lastGamepadValues)) {
-          model.lastGamepadValues[gp.index] = { buttons: {} };
+          model.lastGamepadValues[gp.index] = {
+            left: { buttons: {} },
+            right: { buttons: {} },
+          };
         }
         for (let b = 0; b < gp.buttons.length; ++b) {
-          if (!(b in model.lastGamepadValues[gp.index].buttons)) {
-            model.lastGamepadValues[gp.index].buttons[b] = false;
+          if (!(b in model.lastGamepadValues[gp.index][hand].buttons)) {
+            model.lastGamepadValues[gp.index][hand].buttons[b] = false;
           }
           if (
-            model.lastGamepadValues[gp.index].buttons[b] !==
-            gp.buttons[b].pressed
+            model.lastGamepadValues[gp.index][hand].buttons[b] !==
+              gp.buttons[b].pressed &&
+            gripPose != null
           ) {
             publicAPI.button3DEvent({
               gamepad: gp,
-              position: gp.pose.position,
-              orientation: gp.pose.orientation,
+              position: gripPose.transform.position,
+              orientation: gripPose.transform.orientation,
               pressed: gp.buttons[b].pressed,
               device:
-                gp.hand === 'left'
+                inputSource.handedness === 'left'
                   ? Device.LeftController
                   : Device.RightController,
               input:
-                deviceInputMap[gp.id] && deviceInputMap[gp.id][b]
-                  ? deviceInputMap[gp.id][b]
+                deviceInputMap[gp.mapping] && deviceInputMap[gp.mapping][b]
+                  ? deviceInputMap[gp.mapping][b]
                   : Input.Trigger,
             });
-            model.lastGamepadValues[gp.index].buttons[b] =
+            model.lastGamepadValues[gp.index][hand].buttons[b] =
               gp.buttons[b].pressed;
           }
-          if (model.lastGamepadValues[gp.index].buttons[b]) {
+          if (
+            model.lastGamepadValues[gp.index][hand].buttons[b] &&
+            gripPose != null
+          ) {
             publicAPI.move3DEvent({
               gamepad: gp,
-              position: gp.pose.position,
-              orientation: gp.pose.orientation,
+              position: gripPose.transform.position,
+              orientation: gripPose.transform.orientation,
               device:
-                gp.hand === 'left'
+                inputSource.handedness === 'left'
                   ? Device.LeftController
                   : Device.RightController,
             });
           }
         }
       }
-    }
+    });
   };
 
   publicAPI.handleMouseMove = (event) => {
@@ -491,6 +506,18 @@ function vtkRenderWindowInteractor(publicAPI, model) {
 
   publicAPI.handleAnimation = () => {
     const currTime = Date.now();
+    model._animationFrameCount++;
+    if (
+      currTime - model._animationStartTime > 1000.0 &&
+      model._animationFrameCount > 1
+    ) {
+      model.recentAnimationFrameRate =
+        (1000.0 * (model._animationFrameCount - 1)) /
+        (currTime - model._animationStartTime);
+      publicAPI.animationFrameRateUpdateEvent();
+      model._animationStartTime = currTime;
+      model._animationFrameCount = 1;
+    }
     if (model.FrameTime === -1.0) {
       model.lastFrameTime = 0.1;
     } else {
@@ -539,7 +566,7 @@ function vtkRenderWindowInteractor(publicAPI, model) {
     model.wheelTimeoutID = setTimeout(() => {
       publicAPI.endMouseWheelEvent();
       model.wheelTimeoutID = 0;
-    }, 200);
+    }, 800);
   };
 
   publicAPI.handleMouseEnter = (event) => {
@@ -696,7 +723,7 @@ function vtkRenderWindowInteractor(publicAPI, model) {
   };
 
   publicAPI.getFirstRenderer = () =>
-    model.view.getRenderable().getRenderersByReference()[0];
+    model.view?.getRenderable()?.getRenderersByReference()?.[0];
 
   publicAPI.findPokedRenderer = (x = 0, y = 0) => {
     if (!model.view) {
@@ -704,7 +731,10 @@ function vtkRenderWindowInteractor(publicAPI, model) {
     }
     // The original order of renderers needs to remain as
     // the first one is the one we want to manipulate the camera on.
-    const rc = model.view.getRenderable().getRenderers();
+    const rc = model.view?.getRenderable()?.getRenderers();
+    if (!rc) {
+      return null;
+    }
     rc.sort((a, b) => a.getLayer() - b.getLayer());
     let interactiveren = null;
     let viewportren = null;
@@ -756,7 +786,7 @@ function vtkRenderWindowInteractor(publicAPI, model) {
   // do not want extra renders as the make the apparent interaction
   // rate slower.
   publicAPI.render = () => {
-    if (model.animationRequest === null && !model.inRender) {
+    if (!publicAPI.isAnimating() && !model.inRender) {
       forceRender();
     }
   };
@@ -972,6 +1002,8 @@ function vtkRenderWindowInteractor(publicAPI, model) {
 
   publicAPI.handleVisibilityChange = () => {
     model.lastFrameStart = Date.now();
+    model._animationStartTime = Date.now();
+    model._animationFrameCount = 0;
   };
 
   publicAPI.setCurrentRenderer = (r) => {
@@ -1028,6 +1060,7 @@ const DEFAULT_VALUES = {
   currentGesture: 'Start',
   animationRequest: null,
   lastFrameTime: 0.1,
+  recentAnimationFrameRate: 10.0,
   wheelTimeoutID: 0,
   moveTimeoutID: 0,
   lastGamepadValues: {},
@@ -1052,6 +1085,7 @@ export function extend(publicAPI, model, initialValues = {}) {
     'container',
     'interactorStyle',
     'lastFrameTime',
+    'recentAnimationFrameRate',
     'view',
   ]);
 

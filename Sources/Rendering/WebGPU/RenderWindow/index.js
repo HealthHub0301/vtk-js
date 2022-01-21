@@ -129,6 +129,9 @@ function vtkWebGPURenderWindow(publicAPI, model) {
 
       publicAPI.create3DContextAsync().then(() => {
         model.initialized = true;
+        if (model.deleted) {
+          return;
+        }
         publicAPI.invokeInitialized();
       });
     }
@@ -182,9 +185,16 @@ function vtkWebGPURenderWindow(publicAPI, model) {
   publicAPI.create3DContextAsync = async () => {
     // Get a GPU device to render with
     model.adapter = await navigator.gpu.requestAdapter();
+    if (model.deleted) {
+      return;
+    }
     // console.log([...model.adapter.features]);
     model.device = vtkWebGPUDevice.newInstance();
     model.device.initialize(await model.adapter.requestDevice());
+    if (model.deleted) {
+      model.device = null;
+      return;
+    }
     // model.device.getHandle().lost.then((info) => {
     //   console.log(`${info.message}`);
     //   publicAPI.releaseGraphicsResources();
@@ -371,9 +381,18 @@ function vtkWebGPURenderWindow(publicAPI, model) {
   };
 
   publicAPI.traverseAllPasses = () => {
+    if (model.deleted) {
+      return;
+    }
+    // if we are not initialized then we call initialize
+    // which is async so we will not actually get a render
+    // so we queue up another traverse for when we are initialized
     if (!model.initialized) {
       publicAPI.initialize();
-      publicAPI.onInitialized(publicAPI.traverseAllPasses);
+      const subscription = publicAPI.onInitialized(() => {
+        subscription.unsubscribe();
+        publicAPI.traverseAllPasses();
+      });
     } else {
       if (model.renderPasses) {
         for (let index = 0; index < model.renderPasses.length; ++index) {
@@ -526,6 +545,7 @@ const DEFAULT_VALUES = {
   useOffScreen: false,
   useBackgroundImage: false,
   nextPropID: 1,
+  xrSupported: false,
 };
 
 // ----------------------------------------------------------------------------
@@ -570,6 +590,7 @@ export function extend(publicAPI, model, initialValues = {}) {
     'commandEncoder',
     'device',
     'useBackgroundImage',
+    'xrSupported',
   ]);
 
   macro.setGet(publicAPI, model, [
