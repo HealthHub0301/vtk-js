@@ -20,11 +20,9 @@ import {
   OpacityMode,
 } from 'vtk.js/Sources/Rendering/Core/VolumeProperty/Constants';
 import { BlendMode } from 'vtk.js/Sources/Rendering/Core/VolumeMapper/Constants';
-
+import { registerOverride } from 'vtk.js/Sources/Rendering/OpenGL/ViewNodeFactory';
 import vtkVolumeVS from 'vtk.js/Sources/Rendering/OpenGL/glsl/vtkVolumeVS.glsl';
 import vtkVolumeFS from 'vtk.js/Sources/Rendering/OpenGL/glsl/vtkVolumeFS.glsl';
-
-import { registerOverride } from 'vtk.js/Sources/Rendering/OpenGL/ViewNodeFactory';
 
 const { vtkWarningMacro, vtkErrorMacro } = macro;
 
@@ -78,7 +76,12 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
       // Per Component?
       model.scalarTexture.setOpenGLRenderWindow(model.openGLRenderWindow);
       model.colorTexture.setOpenGLRenderWindow(model.openGLRenderWindow);
+      model.scolorTexture.setOpenGLRenderWindow(model.openGLRenderWindow);
       model.opacityTexture.setOpenGLRenderWindow(model.openGLRenderWindow);
+      model.sopacityTextrue.setOpenGLRenderWindow(model.openGLRenderWindow);
+      model.cprVelocityTexture.setOpenGLRenderWindow(model.openGLRenderWindow);
+      model.cprRayTexture.setOpenGLRenderWindow(model.openGLRenderWindow);
+      model.cprImageTexture.setOpenGLRenderWindow(model.openGLRenderWindow);
 
       model.openGLVolume = publicAPI.getFirstAncestorOfType('vtkOpenGLVolume');
       const actor = model.openGLVolume.getRenderable();
@@ -338,7 +341,9 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
     let lightComplexity = 0;
     if (
       actor.getProperty().getShade() &&
-      model.renderable.getBlendMode() === BlendMode.COMPOSITE_BLEND
+      (model.renderable.getBlendMode() === BlendMode.COMPOSITE_BLEND ||
+        model.renderable.getBlendMode() === 4 ||
+        model.renderable.getBlendMode() === 5)
     ) {
       // consider the lighting complexity to determine which case applies
       // simple headlight, Light Kit, the whole feature set of VTK
@@ -804,10 +809,56 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
 
   publicAPI.setPropertyShaderParameters = (cellBO, ren, actor) => {
     const program = cellBO.getProgram();
+    //Gradient Opacity 의 threshold값 설정
+    program.setUniformf('GradientOpacityThreshold', 0.1);
+
+    const dicom = DATA.getDicoms()[0];
+    const windowCenter = dicom.windowCenter;
+    const windowWidth = dicom.windowWidth;
+    const lowerGreyLevel = windowCenter - windowWidth * 0.5;
+    const upperGreyLevel = windowCenter + windowWidth * 0.5;
+    const adjustedLowerGreyLevel = (lowerGreyLevel - DATA.getVolume().min) / (DATA.getVolume().max - DATA.getVolume().min);
+    const adjustedUpperGreyLevel = (upperGreyLevel - DATA.getVolume().min) / (DATA.getVolume().max - DATA.getVolume().min);
+    program.setUniformf('lowerGreyLevel', adjustedLowerGreyLevel);
+    program.setUniformf('upperGreyLevel', adjustedUpperGreyLevel);
+
+    const canvasSize = model.openGLRenderWindow.getSize();
+    program.setUniform2f('canvasSize', canvasSize[0], canvasSize[1]);
+    program.setUniformf('cprScale', model.renderable.getCprScale());
+    const cprCenter = model.renderable.getCprCenter();
+    program.setUniform2f('cprCenter', cprCenter[0], cprCenter[1]);
+
+    if(DATA.CPR != null && DATA.CPR.imageToPositionMap != null){
+      program.setUniformf('ciwidth', DATA.CPR.CPRPoints.length);
+      program.setUniformf('ciheight',DATA.CPR.imageWidth);
+      program.setUniformf('cprThickness', DATA.CPR.thickness);
+    }
+    program.setUniformf('mprThickness', model.renderable.getMprThickness());
+    program.setUniform3fArray('mprScale', model.renderable.getMprScale());
+
+    program.setUniform3fArray('axialUp', model.renderable.getAxialUp());
+    program.setUniform3fArray('axialCross', model.renderable.getAxialCross());
+    program.setUniform3fArray('axialNormal', model.renderable.getAxialNormal());
+    program.setUniform3fArray('axialPlaneCenter', model.renderable.getAxialPlaneCenter());
+
+    program.setUniform3fArray('coronalUp', model.renderable.getCoronalUp());
+    program.setUniform3fArray('coronalCross', model.renderable.getCoronalCross());
+    program.setUniform3fArray('coronalNormal', model.renderable.getCoronalNormal());
+    program.setUniform3fArray('coronalPlaneCenter', model.renderable.getCoronalPlaneCenter());
+
+    program.setUniform3fArray('sagittalUp', model.renderable.getSagittalUp());
+    program.setUniform3fArray('sagittalCross', model.renderable.getSagittalCross());
+    program.setUniform3fArray('sagittalNormal', model.renderable.getSagittalNormal());
+    program.setUniform3fArray('sagittalPlaneCenter', model.renderable.getSagittalPlaneCenter());
 
     program.setUniformi('ctexture', model.colorTexture.getTextureUnit());
+    program.setUniformi('sctexture', model.scolorTexture.getTextureUnit());
     program.setUniformi('otexture', model.opacityTexture.getTextureUnit());
+    program.setUniformi('sotexture', model.sopacityTextrue.getTextureUnit());
     program.setUniformi('jtexture', model.jitterTexture.getTextureUnit());
+    program.setUniformi('cvtexture', model.cprVelocityTexture.getTextureUnit());
+    program.setUniformi('crtexture', model.cprRayTexture.getTextureUnit());
+    program.setUniformi('citexture', model.cprImageTexture.getTextureUnit());
 
     const volInfo = model.scalarTexture.getVolumeInfo();
     const vprop = actor.getProperty();
@@ -1092,8 +1143,13 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
     // render the texture
     model.scalarTexture.activate();
     model.opacityTexture.activate();
+    model.sopacityTextrue.activate();
     model.colorTexture.activate();
+    model.scolorTexture.activate();
     model.jitterTexture.activate();
+    model.cprVelocityTexture.activate();
+    model.cprRayTexture.activate();
+    model.cprImageTexture.activate();
 
     publicAPI.updateShaders(model.tris, ren, actor);
 
@@ -1106,8 +1162,13 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
 
     model.scalarTexture.deactivate();
     model.colorTexture.deactivate();
+    model.scolorTexture.deactivate();
     model.opacityTexture.deactivate();
+    model.sopacityTextrue.deactivate();
     model.jitterTexture.deactivate();
+    model.cprVelocityTexture.deactivate();
+    model.cprRayTexture.deactivate();
+    model.cprImageTexture.deactivate();
   };
 
   publicAPI.renderPieceFinish = (ren, actor) => {
@@ -1287,6 +1348,7 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
       const oSize = oWidth * 2 * numIComps;
       const ofTable = new Float32Array(oSize);
       const tmpTable = new Float32Array(oWidth);
+      const sofTable = new Float32Array(oSize);
 
       for (let c = 0; c < numIComps; ++c) {
         const ofun = vprop.getScalarOpacity(c);
@@ -1302,11 +1364,20 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
             1.0 - (1.0 - tmpTable[i]) ** opacityFactor;
           ofTable[c * oWidth * 2 + i + oWidth] = ofTable[c * oWidth * 2 + i];
         }
+        sofTable[c * oWidth * 2] = ofTable[c * oWidth * 2]
+        for(let i = 1 ; i < oWidth; ++i){
+          sofTable[c * oWidth * 2 + i] = ofTable[c * oWidth * 2 + i] + sofTable[c * oWidth * 2 + i - 1];
+          sofTable[c * oWidth * 2 + i + oWidth] = sofTable[c * oWidth * 2 + i];
+        }
       }
 
       model.opacityTexture.releaseGraphicsResources(model.openGLRenderWindow);
       model.opacityTexture.setMinificationFilter(Filter.LINEAR);
       model.opacityTexture.setMagnificationFilter(Filter.LINEAR);
+
+      model.sopacityTextrue.releaseGraphicsResources(model.openGLRenderWindow);
+      model.sopacityTextrue.setMinificationFilter(Filter.LINEAR);
+      model.sopacityTextrue.setMagnificationFilter(Filter.LINEAR);
 
       // use float texture where possible because we really need the resolution
       // for this table. Errors in low values of opacity accumulate to
@@ -1324,6 +1395,13 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
           VtkDataTypes.FLOAT,
           ofTable
         );
+        model.sopacityTextrue.create2DFromRaw(
+          oWidth,
+          2 * numIComps,
+          1,
+          VtkDataTypes.FLOAT,
+          sofTable
+        );
       } else {
         const oTable = new Uint8Array(oSize);
         for (let i = 0; i < oSize; ++i) {
@@ -1336,6 +1414,18 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
           VtkDataTypes.UNSIGNED_CHAR,
           oTable
         );
+        const soTable = new Float32Array(oSize);
+        soTable[0] = oTable[0];
+        for (let i = 1; i < oSize; ++i) {
+          soTable[i] = oTable[i] + soTable[i - 1];
+        }
+        model.sopacityTextrue.create2DFromRaw(
+          oWidth,
+          2 * numIComps,
+          1,
+          VtkDataTypes.FLOAT,
+          soTable
+        );
       }
       model.opacityTextureString = toString;
     }
@@ -1346,6 +1436,7 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
       const cWidth = 1024;
       const cSize = cWidth * 2 * numIComps * 3;
       const cTable = new Uint8Array(cSize);
+      const scTable = new Float32Array(cSize);
       const tmpTable = new Float32Array(cWidth * 3);
 
       for (let c = 0; c < numIComps; ++c) {
@@ -1356,11 +1447,30 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
           cTable[c * cWidth * 6 + i] = 255.0 * tmpTable[i];
           cTable[c * cWidth * 6 + i + cWidth * 3] = 255.0 * tmpTable[i];
         }
+
+        scTable[c * cWidth * 6 + 0] = tmpTable[0];
+        scTable[c * cWidth * 6 + 1] = tmpTable[1];
+        scTable[c * cWidth * 6 + 2] = tmpTable[2];
+        scTable[c * cWidth * 6 + 0 + cWidth * 3] = tmpTable[0];
+        scTable[c * cWidth * 6 + 1 + cWidth * 3] =  tmpTable[1];
+        scTable[c * cWidth * 6 + 2 + cWidth * 3] =  tmpTable[2];
+        for (let i = 3; i < cWidth * 3; i += 3) {
+          scTable[c * cWidth * 6 + i + 0] = tmpTable[i + 0] + scTable[c * cWidth * 6 + i + 0 - 3];
+          scTable[c * cWidth * 6 + i + 1] = tmpTable[i + 1] + scTable[c * cWidth * 6 + i + 1 - 3];
+          scTable[c * cWidth * 6 + i + 2] = tmpTable[i + 2] + scTable[c * cWidth * 6 + i + 2 - 3];
+          scTable[c * cWidth * 6 + i + 0 + cWidth * 3] = scTable[c * cWidth * 6 + i + 0]
+          scTable[c * cWidth * 6 + i + 1 + cWidth * 3] = scTable[c * cWidth * 6 + i + 1]
+          scTable[c * cWidth * 6 + i + 2 + cWidth * 3] = scTable[c * cWidth * 6 + i + 2]
+        }
       }
 
       model.colorTexture.releaseGraphicsResources(model.openGLRenderWindow);
       model.colorTexture.setMinificationFilter(Filter.LINEAR);
       model.colorTexture.setMagnificationFilter(Filter.LINEAR);
+
+      model.scolorTexture.releaseGraphicsResources(model.openGLRenderWindow);
+      model.scolorTexture.setMinificationFilter(Filter.LINEAR);
+      model.scolorTexture.setMagnificationFilter(Filter.LINEAR);
 
       model.colorTexture.create2DFromRaw(
         cWidth,
@@ -1369,7 +1479,93 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
         VtkDataTypes.UNSIGNED_CHAR,
         cTable
       );
+      model.scolorTexture.create2DFromRaw(
+        cWidth,
+        2 * numIComps,
+        3,
+        VtkDataTypes.FLOAT,
+        scTable
+      );
       model.colorTextureString = toString;
+    }
+
+    let width = 1;
+    if(model.renderable.getBlendMode() == 7 &&
+     DATA.CPR != null &&
+     DATA.CPR.imageToPositionMap != null
+     ){
+      width = DATA.CPR.CPRPoints.length;
+    }
+
+    const cvTable = new Float32Array(width * 3);
+    const crTable = new Float32Array(width * 3);
+    let ciTable = new Float32Array(width * 3);
+
+    if(model.renderable.getBlendMode() == 7 &&
+    DATA.CPR != null &&
+    DATA.CPR.imageToPositionMap != null
+    ){
+      let idx = 0;
+      for(let i = 0; i < width; ++i){
+        cvTable[idx + 0] = DATA.CPR.CPRPoints[i].velocity[0];
+        cvTable[idx + 1] = DATA.CPR.CPRPoints[i].velocity[1];
+        cvTable[idx + 2] = DATA.CPR.CPRPoints[i].velocity[2];
+
+
+        crTable[idx + 0] = DATA.CPR.CPRPoints[i].rayDir[0];
+        crTable[idx + 1] = DATA.CPR.CPRPoints[i].rayDir[1];
+        crTable[idx + 2] = DATA.CPR.CPRPoints[i].rayDir[2];
+        idx +=3;
+      }
+      ciTable = DATA.CPR.imageToPositionMap;
+    }
+
+    model.cprVelocityTexture.releaseGraphicsResources(model.openGLRenderWindow);
+    model.cprVelocityTexture.setMinificationFilter(Filter.LINEAR);
+    model.cprVelocityTexture.setMagnificationFilter(Filter.LINEAR);
+
+    model.cprRayTexture.releaseGraphicsResources(model.openGLRenderWindow);
+    model.cprRayTexture.setMinificationFilter(Filter.LINEAR);
+    model.cprRayTexture.setMagnificationFilter(Filter.LINEAR);
+
+    model.cprImageTexture.releaseGraphicsResources(model.openGLRenderWindow);
+    model.cprImageTexture.setMinificationFilter(Filter.LINEAR);
+    model.cprImageTexture.setMagnificationFilter(Filter.LINEAR);
+    model.cprVelocityTexture.create2DFromRaw(
+      width,
+      1,
+      3,
+      VtkDataTypes.FLOAT,
+      cvTable
+    )
+    model.cprRayTexture.create2DFromRaw(
+      width,
+      1,
+      3,
+      VtkDataTypes.FLOAT,
+      crTable
+    )
+
+    if(model.renderable.getBlendMode() == 7 &&
+    DATA.CPR != null &&
+    DATA.CPR.imageToPositionMap != null
+    ){
+      model.cprImageTexture.create2DFromRaw(
+        width,
+        DATA.CPR.imageWidth,
+        3,
+        VtkDataTypes.FLOAT,
+        ciTable
+      )
+    }
+    else{
+      model.cprImageTexture.create2DFromRaw(
+        width,
+        1,
+        3,
+        VtkDataTypes.FLOAT,
+        ciTable
+      )
     }
 
     // rebuild the scalarTexture if the data has changed
@@ -1466,10 +1662,16 @@ const DEFAULT_VALUES = {
   scalarTexture: null,
   scalarTextureString: null,
   opacityTexture: null,
+  sopacityTextrue: null,
   opacityTextureString: null,
   colorTexture: null,
+  scolorTexture:null,
   colorTextureString: null,
   jitterTexture: null,
+  cprVelocityTexture: null,
+  cprRayTexture: null,
+  cprImageTexture: null,
+  cprTextureString: null,
   tris: null,
   framebuffer: null,
   copyShader: null,
@@ -1486,6 +1688,8 @@ const DEFAULT_VALUES = {
   projectionToView: null,
   avgWindowArea: 0.0,
   avgFrameTime: 0.0,
+  volumeMin: null,
+  volumeMax: null,
 };
 
 // ----------------------------------------------------------------------------
@@ -1502,10 +1706,15 @@ export function extend(publicAPI, model, initialValues = {}) {
   model.tris = vtkHelper.newInstance();
   model.scalarTexture = vtkOpenGLTexture.newInstance();
   model.opacityTexture = vtkOpenGLTexture.newInstance();
+  model.sopacityTextrue = vtkOpenGLTexture.newInstance();
   model.colorTexture = vtkOpenGLTexture.newInstance();
+  model.scolorTexture = vtkOpenGLTexture.newInstance();
   model.jitterTexture = vtkOpenGLTexture.newInstance();
   model.jitterTexture.setWrapS(Wrap.REPEAT);
   model.jitterTexture.setWrapT(Wrap.REPEAT);
+  model.cprVelocityTexture = vtkOpenGLTexture.newInstance();
+  model.cprRayTexture = vtkOpenGLTexture.newInstance();
+  model.cprImageTexture = vtkOpenGLTexture.newInstance();
   model.framebuffer = vtkOpenGLFramebuffer.newInstance();
 
   model.idxToView = mat4.identity(new Float64Array(16));
@@ -1515,7 +1724,7 @@ export function extend(publicAPI, model, initialValues = {}) {
   model.projectionToWorld = mat4.identity(new Float64Array(16));
 
   // Build VTK API
-  macro.setGet(publicAPI, model, ['context']);
+  macro.setGet(publicAPI, model, ['context', 'windowCenter', 'windowWidth']);
 
   // Object methods
   vtkOpenGLVolumeMapper(publicAPI, model);

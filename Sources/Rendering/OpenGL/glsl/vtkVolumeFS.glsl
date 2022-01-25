@@ -118,11 +118,52 @@ uniform float vPlaneDistance5;
 
 // opacity and color textures
 uniform sampler2D otexture;
+uniform sampler2D sotexture;
 uniform float oshift0;
 uniform float oscale0;
 uniform sampler2D ctexture;
+uniform sampler2D sctexture;
 uniform float cshift0;
 uniform float cscale0;
+
+// cpr thickness
+uniform sampler2D cvtexture;
+uniform sampler2D crtexture;
+uniform sampler2D citexture;
+uniform float cprThickness;
+uniform float ciwidth;
+uniform float ciheight;
+uniform float cprScale;
+uniform vec2 cprCenter;
+
+uniform vec3 axialUp;
+uniform vec3 axialCross;
+uniform vec3 axialNormal;
+uniform vec3 axialPlaneCenter;
+
+uniform vec3 coronalUp;
+uniform vec3 coronalCross;
+uniform vec3 coronalNormal;
+uniform vec3 coronalPlaneCenter;
+
+uniform vec3 sagittalUp;
+uniform vec3 sagittalCross;
+uniform vec3 sagittalNormal;
+uniform vec3 sagittalPlaneCenter;
+
+//mpr thickness
+uniform float mprThickness;
+uniform vec3 mprScale;
+
+// GradientOpacity의 threshold 값
+uniform float GradientOpacityThreshold;
+
+// windowing 값
+uniform float lowerGreyLevel;
+uniform float upperGreyLevel;
+
+// canvas 크기의 pixel size
+uniform vec2 canvasSize;
 
 // jitter texture
 uniform sampler2D jtexture;
@@ -633,10 +674,265 @@ vec4 getColorForValue(vec4 tValue, vec3 posIS, vec3 tstep)
 
 
 
+return tColor;
+}
+//=======================================================================
+// Given a texture value compute the color and opacity
+//
+vec4 getSumColorForValue(vec4 tValue, vec4 tValue2, vec3 posIS, vec3 tstep)
+{
+#ifdef vtkImageLabelOutlineOn
+  vec3 centerPosIS = fragCoordToIndexSpace(gl_FragCoord); // pos in texture space
+  vec4 centerValue = getTextureValue(centerPosIS);
+  bool pixelOnBorder = false;
+  vec4 tColor = texture2D(ctexture, vec2(centerValue.r * cscale0 + cshift0, 0.5));
+
+  // Get alpha of segment from opacity function.
+  tColor.a = texture2D(otexture, vec2(centerValue.r * oscale0 + oshift0, 0.5)).r;
+
+  // Only perform outline check on fragments rendering voxels that aren't invisible.
+  // Saves a bunch of needless checks on the background.
+  // TODO define epsilon when building shader?
+  if (float(tColor.a) > 0.01) {
+    for (int i = -outlineThickness; i <= outlineThickness; i++) {
+      for (int j = -outlineThickness; j <= outlineThickness; j++) {
+        if (i == 0 || j == 0) {
+          continue;
+        }
+
+        vec4 neighborPixelCoord = vec4(gl_FragCoord.x + float(i),
+          gl_FragCoord.y + float(j),
+          gl_FragCoord.z, gl_FragCoord.w);
+
+        vec3 neighborPosIS = fragCoordToIndexSpace(neighborPixelCoord);
+        vec4 value = getTextureValue(neighborPosIS);
+
+        // If any of my neighbours are not the same value as I
+        // am, this means I am on the border of the segment.
+        // We can break the loops
+        if (any(notEqual(value, centerValue))) {
+          pixelOnBorder = true;
+          break;
+        }
+      }
+
+      if (pixelOnBorder == true) {
+        break;
+      }
+    }
+
+    // If I am on the border, I am displayed at full opacity
+    if (pixelOnBorder == true) {
+      tColor.a = 1.0;
+    }
+  }
+
+#else
+  // compute the normal and gradient magnitude if needed
+  // We compute it as a vec4 if possible otherwise a mat4
+  //
+  vec4 goFactor = vec4(1.0,1.0,1.0,1.0);
+
+  // compute the normal vectors as needed
+  #if (vtkLightComplexity > 0) || defined(vtkGradientOpacityOn)
+    #if defined(vtkIndependentComponentsOn) && (vtkNumComponents > 1)
+      mat4 normalMat = computeMat4Normal(posIS, tValue, tstep);
+      #if !defined(vtkComponent0Proportional)
+        vec4 normal0 = normalMat[0];
+      #endif
+      #if !defined(vtkComponent1Proportional)
+        vec4 normal1 = normalMat[1];
+      #endif
+      #if vtkNumComponents > 2
+        #if !defined(vtkComponent2Proportional)
+          vec4 normal2 = normalMat[2];
+        #endif
+        #if vtkNumComponents > 3
+          #if !defined(vtkComponent3Proportional)
+            vec4 normal3 = normalMat[3];
+          #endif
+        #endif
+      #endif
+    #else
+      vec4 normal0 = computeNormal(posIS, tValue.a, tstep);
+    #endif
+  #endif
+
+  // compute gradient opacity factors as needed
+  #if defined(vtkGradientOpacityOn)
+    #if !defined(vtkComponent0Proportional)
+      goFactor.x =
+        computeGradientOpacityFactor(normal0, goscale0, goshift0, gomin0, gomax0);
+    #endif
+    #if defined(vtkIndependentComponentsOn) && (vtkNumComponents > 1)
+      #if !defined(vtkComponent1Proportional)
+        goFactor.y =
+          computeGradientOpacityFactor(normal1, goscale1, goshift1, gomin1, gomax1);
+      #endif
+      #if vtkNumComponents > 2
+        #if !defined(vtkComponent2Proportional)
+          goFactor.z =
+            computeGradientOpacityFactor(normal2, goscale2, goshift2, gomin2, gomax2);
+        #endif
+        #if vtkNumComponents > 3
+          #if !defined(vtkComponent3Proportional)
+            goFactor.w =
+              computeGradientOpacityFactor(normal3, goscale3, goshift3, gomin3, gomax3);
+          #endif
+        #endif
+      #endif
+    #endif
+  #endif
+
+  // single component is always independent
+  #if vtkNumComponents == 1
+    float tmin = min(tValue.r * cscale0 + cshift0, tValue2.r * cscale0 + cshift0);
+    float tmax = max(tValue.r * cscale0 + cshift0, tValue2.r * cscale0 + cshift0);
+    vec4 tmpColor1 = texture2D(sctexture, vec2((tmin - 1.0 / 1024.0) , 0.5));
+    vec4 tmpColor2 = texture2D(sctexture, vec2(tmax , 0.5));
+    float width = (tmax - tmin) * 1024.0 + 1.0;
+    width = max(width, 1.0);
+    vec4 tColor = (tmpColor2 - tmpColor1) / width;
+
+    tmin = min(tValue.r * oscale0 + oshift0, tValue2.r * oscale0 + oshift0);
+    tmax = max(tValue.r * oscale0 + oshift0, tValue2.r * oscale0 + oshift0);
+    float tmpOpacity1 = texture2D(sotexture, vec2((tmin - 1.0 / 1024.0), 0.5)).r;
+    float tmpOpacity2 = texture2D(sotexture, vec2(tmax, 0.5)).r;
+    width = (tmax - tmin) * 1024.0 + 1.0;
+    width = max(width, 1.0);
+    tColor.a = goFactor.x*(tmpOpacity2 - tmpOpacity1) / width;
+  #endif
+
+  #if defined(vtkIndependentComponentsOn) && vtkNumComponents >= 2
+    vec4 tColor = mix0*texture2D(ctexture, vec2(tValue.r * cscale0 + cshift0, height0));
+    #if !defined(vtkComponent0Proportional)
+      tColor.a = goFactor.x*mix0*texture2D(otexture, vec2(tValue.r * oscale0 + oshift0, height0)).r;
+    #else
+      float pwfValue = texture2D(otexture, vec2(tValue.r * oscale0 + oshift0, height0)).r;
+      tColor *= pwfValue;
+      tColor.a *= mix(pwfValue, 1.0, (1.0 - mix0));
+    #endif
+
+    vec3 tColor1 = mix1*texture2D(ctexture, vec2(tValue.g * cscale1 + cshift1, height1)).rgb;
+    #if !defined(vtkComponent1Proportional)
+      tColor.a += goFactor.y*mix1*texture2D(otexture, vec2(tValue.g * oscale1 + oshift1, height1)).r;
+    #else
+      float pwfValue = texture2D(otexture, vec2(tValue.g * oscale1 + oshift1, height1)).r;
+      tColor1 *= pwfValue;
+      tColor.a *= mix(pwfValue, 1.0, (1.0 - mix1));
+    #endif
+
+    #if vtkNumComponents >= 3
+      vec3 tColor2 = mix2*texture2D(ctexture, vec2(tValue.b * cscale2 + cshift2, height2)).rgb;
+      #if !defined(vtkComponent2Proportional)
+        tColor.a += goFactor.z*mix2*texture2D(otexture, vec2(tValue.b * oscale2 + oshift2, height2)).r;
+      #else
+        float pwfValue = texture2D(otexture, vec2(tValue.b * oscale2 + oshift2, height2)).r;
+        tColor2 *= pwfValue;
+        tColor.a *= mix(pwfValue, 1.0, (1.0 - mix2));
+      #endif
+
+      #if vtkNumComponents >= 4
+        vec3 tColor3 = mix3*texture2D(ctexture, vec2(tValue.a * cscale3 + cshift3, height3)).rgb;
+        #if !defined(vtkComponent3Proportional)
+          tColor.a += goFactor.w*mix3*texture2D(otexture, vec2(tValue.a * oscale3 + oshift3, height3)).r;
+        #else
+          float pwfValue = texture2D(otexture, vec2(tValue.a * oscale3 + oshift3, height3)).r;
+          tColor3 *= pwfValue;
+          tColor.a *= mix(pwfValue, 1.0, (1.0 - mix3));
+        #endif
+      #endif
+    #endif
+  #else // then not independent
+
+  #if vtkNumComponents == 2
+    float lum = tValue.r * cscale0 + cshift0;
+    float alpha = goFactor.x*texture2D(otexture, vec2(tValue.a * oscale1 + oshift1, 0.5)).r;
+    vec4 tColor = vec4(lum, lum, lum, alpha);
+  #endif
+  #if vtkNumComponents == 3
+    vec4 tColor;
+    tColor.r = tValue.r * cscale0 + cshift0;
+    tColor.g = tValue.g * cscale1 + cshift1;
+    tColor.b = tValue.b * cscale2 + cshift2;
+    tColor.a = goFactor.x*texture2D(otexture, vec2(tValue.a * oscale0 + oshift0, 0.5)).r;
+  #endif
+  #if vtkNumComponents == 4
+    vec4 tColor;
+    tColor.r = tValue.r * cscale0 + cshift0;
+    tColor.g = tValue.g * cscale1 + cshift1;
+    tColor.b = tValue.b * cscale2 + cshift2;
+    tColor.a = goFactor.x*texture2D(otexture, vec2(tValue.a * oscale3 + oshift3, 0.5)).r;
+  #endif
+  #endif // dependent
+
+  // apply lighting if requested as appropriate
+  #if vtkLightComplexity > 0
+    #if !defined(vtkComponent0Proportional)
+      applyLighting(tColor.rgb, normal0);
+    #endif
+  #if defined(vtkIndependentComponentsOn) && vtkNumComponents >= 2
+    #if !defined(vtkComponent1Proportional)
+      applyLighting(tColor1, normal1);
+    #endif
+  #if vtkNumComponents >= 3
+    #if !defined(vtkComponent2Proportional)
+      applyLighting(tColor2, normal2);
+    #endif
+  #if vtkNumComponents >= 4
+    #if !defined(vtkComponent3Proportional)
+      applyLighting(tColor3, normal3);
+    #endif
+  #endif
+  #endif
+  #endif
+#endif
+
+// perform final independent blend as needed
+#if defined(vtkIndependentComponentsOn) && vtkNumComponents >= 2
+  tColor.rgb += tColor1;
+#if vtkNumComponents >= 3
+  tColor.rgb += tColor2;
+#if vtkNumComponents >= 4
+  tColor.rgb += tColor3;
+#endif
+#endif
+#endif
+
+#endif
+
 
 
 
 return tColor;
+}
+vec4 windowing(float value)
+{
+  vec4 pixelData = vec4(0.0, 0.0, 0.0, 0.0);
+
+  float gradient = 1.0 / (upperGreyLevel - lowerGreyLevel);
+  if (value <= lowerGreyLevel)
+  {
+    pixelData.r = 0.0;
+    pixelData.g = 0.0;
+    pixelData.b = 0.0;
+  }
+    else if (value > upperGreyLevel)
+  {
+    pixelData.r = 1.0;
+    pixelData.g = 1.0;
+    pixelData.b = 1.0;
+  }
+  else
+  {
+    pixelData.r = gradient * value - lowerGreyLevel * gradient;
+    pixelData.g = gradient * value - lowerGreyLevel * gradient;
+    pixelData.b = gradient * value - lowerGreyLevel * gradient;
+  }
+
+  pixelData.a = 1.0;
+
+  return pixelData;
 }
 
 bool valueWithinScalarRange(vec4 val, vec4 min, vec4 max) {
@@ -680,6 +976,8 @@ void applyBlend(vec3 posIS, vec3 endIS, float sampleDistanceIS, vec3 tdims)
   // local vars for the loop
   vec4 color = vec4(0.0, 0.0, 0.0, 0.0);
   vec4 tValue;
+  vec4 tValue1;
+  vec4 tValue2;
   vec4 tColor;
 
   // if we have less than one step then pick the middle point
@@ -854,6 +1152,279 @@ void applyBlend(vec3 posIS, vec3 endIS, float sampleDistanceIS, vec3 tdims)
 
     gl_FragData[0] = getColorForValue(sum, posIS, tstep);
   #endif
+  #if vtkBlendMode == 5 // custom blend mode pre-integration
+
+    // now map through opacity and color
+    tColor = getColorForValue(tValue, posIS, tstep);
+
+    // handle very thin volumes
+    if (raySteps <= 1.0)
+    {
+      tColor.a = 1.0 - pow(1.0 - tColor.a, raySteps);
+      gl_FragData[0] = tColor;
+      return;
+    }
+
+    tColor.a = 1.0 - pow(1.0 - tColor.a, jitter);
+    color = vec4(tColor.rgb*tColor.a, tColor.a);
+    posIS += (jitter*stepIS);
+
+    for (int i = 0; i < //VTK::MaximumSamplesValue ; ++i)
+    {
+      if (stepsTraveled + 1.0 >= raySteps) { break; }
+
+      // compute the scalar, and next scalar
+      tValue = getTextureValue(posIS);
+      tValue2 = getTextureValue(posIS + stepIS);
+
+      // now map through opacity and color
+      // preintegration
+      tColor = getSumColorForValue(tValue, tValue2, posIS, tstep);
+
+      float mix = (1.0 - color.a);
+
+      // this line should not be needed but nvidia seems to not handle
+      // the break correctly on windows/chrome 58 angle
+      //mix = mix * sign(max(raySteps - stepsTraveled - 1.0, 0.0));
+
+      color = color + vec4(tColor.rgb*tColor.a, tColor.a)*mix;
+      stepsTraveled++;
+      posIS += stepIS;
+      if (color.a > 0.99) { color.a = 1.0; break; }
+    }
+
+    if (color.a < 0.99 && (raySteps - stepsTraveled) > 0.0)
+    {
+      posIS = endIS;
+
+      // compute the scalar
+      tValue = getTextureValue(posIS);
+
+      // now map through opacity and color
+      tColor = getColorForValue(tValue, posIS, tstep);
+      tColor.a = 1.0 - pow(1.0 - tColor.a, raySteps - stepsTraveled);
+
+      float mix = (1.0 - color.a);
+      color = color + vec4(tColor.rgb*tColor.a, tColor.a)*mix;
+    }
+
+    gl_FragData[0] = vec4(color.rgb/color.a, color.a);
+
+    #endif
+    #if vtkBlendMode == 6 // custom blend mode gradiant opacity
+
+    // now map through opacity and color
+    tColor = getColorForValue(tValue, posIS, tstep);
+
+    // handle very thin volumes
+    if (raySteps <= 1.0)
+    {
+      tColor.a = 1.0 - pow(1.0 - tColor.a, raySteps);
+      gl_FragData[0] = tColor;
+      return;
+    }
+
+    tColor.a = 1.0 - pow(1.0 - tColor.a, jitter);
+    color = vec4(tColor.rgb*tColor.a, tColor.a);
+    posIS += (jitter*stepIS);
+
+    for (int i = 0; i < //VTK::MaximumSamplesValue ; ++i)
+    {
+      if (stepsTraveled + 1.0 >= raySteps) { break; }
+
+      // compute the scalar
+      tValue = getTextureValue(posIS);
+
+      // now map through opacity and color
+      tColor = getColorForValue(tValue, posIS, tstep);
+
+      float mix = (1.0 - color.a);
+
+      // this line should not be needed but nvidia seems to not handle
+      // the break correctly on windows/chrome 58 angle
+      //mix = mix * sign(max(raySteps - stepsTraveled - 1.0, 0.0));
+
+      color = color + vec4(tColor.rgb*tColor.a, tColor.a)*mix;
+      stepsTraveled++;
+      posIS += stepIS;
+      if (color.a > 0.99) { color.a = 1.0; break; }
+    }
+
+    if (color.a < 0.99 && (raySteps - stepsTraveled) > 0.0)
+    {
+      posIS = endIS;
+
+      // compute the scalar
+      tValue = getTextureValue(posIS);
+
+      // now map through opacity and color
+      tColor = getColorForValue(tValue, posIS, tstep);
+      tColor.a = 1.0 - pow(1.0 - tColor.a, raySteps - stepsTraveled);
+
+      float mix = (1.0 - color.a);
+      color = color + vec4(tColor.rgb*tColor.a, tColor.a)*mix;
+    }
+
+    gl_FragData[0] = vec4(color.rgb/color.a, color.a);
+
+    #endif
+    #if vtkBlendMode == 7
+
+    //gl_fragcoord 는 pixel 좌표입니다. 픽셀좌표를 해상도로 나누어서 0~1범위로 로 변경합니다.
+    vec2 st = gl_FragCoord.xy / canvasSize;
+
+    float cprWidth = ciwidth * cprScale;
+    float cprHeight = ciheight * cprScale;
+
+    //1pixel 당 1mm로 이미지 크기 고정
+    float sideX = (1.0 - cprWidth  / canvasSize.x) * 0.5;
+    float sideY = (1.0 - cprHeight / canvasSize.y) * 0.5;
+
+    st.x = st.x + cprCenter.x;
+    st.y = st.y + cprCenter.y;
+
+    if(ciwidth < canvasSize.x){
+
+      if(st.x < sideX){
+        gl_FragData[0] = vec4(0.0, 0.0, 0.0, 1.0);
+        return;
+      }
+      else if(st.x > 1.0 - sideX ){
+        gl_FragData[0] = vec4(0.0, 0.0, 0.0, 1.0);
+        return;
+      }
+
+      st.x = (st.x - sideX) * canvasSize.x / cprWidth;
+    }
+    else{
+      st.x = st.x * canvasSize.x / cprWidth + (1.0 - canvasSize.x / cprWidth) * 0.5;
+    }
+
+    if(cprHeight < canvasSize.y){
+
+      if(st.y < sideY){
+        gl_FragData[0] = vec4(0.0, 0.0, 0.0, 1.0);
+        return;
+      }
+      else if(st.y > 1.0 - sideY ){
+        gl_FragData[0] = vec4(0.0, 0.0, 0.0, 1.0);
+        return;
+      }
+
+      st.y = (st.y - sideY) * canvasSize.y / cprHeight;
+    }
+    else{
+      st.y = st.y * canvasSize.y / cprHeight + (1.0 - canvasSize.y / cprHeight) * 0.5;
+    }
+
+    //spline의 가속도와 cpr 진행 방향, image의 xyz volume 좌표를 얻어옵니다.
+    vec4 vel = texture2D(cvtexture, vec2(st.x, 0.5));
+    vec4 ray = texture2D(crtexture, vec2(st.x, 0.5));
+    vec4 img = texture2D(citexture, vec2(st.x, st.y));
+
+    //혹시 몰라 w값 처리
+    vel.w = 1.0;
+    ray.w = 1.0;
+
+    //spline의 가속도와 cpr 진행 방향을 cross 하여 thickness의 진행방향을 얻습니다.
+    vec3 tRay = cross(ray.xyz, vel.xyz);
+    tRay = normalize(tRay);
+
+    //volume 좌표를 shader에서 사용하는 좌표로 변경합니다.
+    //쉐이더는 volume좌표를 0~1범위로 변경해서 사용합니다.
+    img.xyz *= vVCToIJK;
+    tRay.xyz *= vVCToIJK;
+
+    //thickness 진행
+    float acc = 0.0;
+
+    //thickness는 정수로만 진행이 가능합니다.
+    //사실상 sampling 횟수를 지정하는 것과 같습니다.
+
+    int thickness = max(2, int(cprThickness) + 1);
+
+    vec3 sampleStep = tRay.xyz * cprThickness / float(thickness);
+    vec3 start = img.xyz + -tRay.xyz * cprThickness * 0.5;
+
+    //셈플링 진행,
+    for (int i = 0; i < thickness + 1; ++i)
+    {
+      tValue = getTextureValue(start + float(i) * sampleStep);
+      acc += tValue.r;
+      //alpha 값도 적용
+    }
+
+    //sampling 횟수만큼 나누어서 평균내기
+    acc /= float(thickness + 1);
+
+    //windowing 함수 적용 및 출력
+    gl_FragData[0] = windowing(acc);
+
+    #endif
+    #if vtkBlendMode == 8 || vtkBlendMode == 9 || vtkBlendMode == 10
+
+    vec3 rayStart = vec3(0.0);
+    vec3 tRay = vec3(0.0);
+    vec3 scale = 1.0 / mprScale;
+
+    #if vtkBlendMode == 8
+    //rayStart = mprCrossPoint * vVCToIJK;
+    rayStart  = axialPlaneCenter;
+    rayStart += axialCross * (gl_FragCoord.x - 0.5 * canvasSize.x) * scale.x;
+    rayStart += axialUp    * (gl_FragCoord.y - 0.5 * canvasSize.y) * scale.x;
+    rayStart *= vVCToIJK;
+    tRay = axialNormal * vVCToIJK;
+    #elif vtkBlendMode == 9
+    //rayStart = mprCrossPoint * vVCToIJK;
+    rayStart  = coronalPlaneCenter;
+    rayStart += coronalCross *(gl_FragCoord.x - 0.5 * canvasSize.x) * scale.y;
+    rayStart += coronalUp    * (gl_FragCoord.y - 0.5 * canvasSize.y) * scale.y;
+    rayStart *= vVCToIJK;
+    tRay = coronalNormal * vVCToIJK;
+    #elif vtkBlendMode == 10
+    //rayStart = mprCrossPoint * vVCToIJK;
+    rayStart  = sagittalPlaneCenter;
+    rayStart += sagittalCross * (gl_FragCoord.x - 0.5 * canvasSize.x) * scale.z;
+    rayStart += sagittalUp    * (gl_FragCoord.y - 0.5 * canvasSize.y) * scale.z;
+    rayStart *= vVCToIJK;
+    tRay = sagittalNormal * vVCToIJK;
+    #endif
+
+    if(rayStart.x > 1.0 || rayStart.x < 0.0){
+      gl_FragData[0] = vec4(0);
+      return;
+    }
+
+    if(rayStart.y > 1.0 || rayStart.y < 0.0){
+      gl_FragData[0] = vec4(0);
+      return;
+    }
+
+    if(rayStart.z > 1.0 || rayStart.z < 0.0){
+      gl_FragData[0] = vec4(0);
+      return;
+    }
+
+    int thickness = max(2, int(mprThickness) + 1);
+
+    vec3 sampleStep = tRay * mprThickness / float(thickness);
+    vec3 start = rayStart + -tRay * mprThickness * 0.5;
+
+    float acc = 0.0;
+    //셈플링 진행
+    for (int i = 0; i < thickness + 1; ++i)
+    {
+      tValue = getTextureValue(start + float(i) * sampleStep);
+      acc += tValue.r;
+      //alpha 값도 적용
+    }
+
+     acc /=  float(thickness + 1);
+    //tValue = getTextureValue(rayStart);
+
+    //windowing 함수 적용 및 출력
+    gl_FragData[0] = windowing(acc);
+    #endif
 }
 
 //=======================================================================

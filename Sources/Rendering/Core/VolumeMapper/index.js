@@ -74,6 +74,7 @@ function vtkVolumeMapper(publicAPI, model) {
   };
 }
 
+
 // ----------------------------------------------------------------------------
 // Object factory
 // ----------------------------------------------------------------------------
@@ -89,6 +90,22 @@ const DEFAULT_VALUES = {
   ipScalarRange: [-1000000.0, 1000000.0],
   filterMode: FilterMode.OFF, // ignored by WebGL so no behavior change
   preferSizeOverAccuracy: false, // Whether to use halfFloat representation of float, when it is inaccurate
+  cprScale: 1.0,
+  cprCenter: [0.0, 0.0],
+  mprThickness: 1.0,
+  mprScale: [1, 1, 1],
+  axialUp: [0, 1, 0],
+  axialCross: [1, 0, 0],
+  axialNormal: [0, 0, 1],
+  axialPlaneCenter: [0, 0, 0],
+  coronalUp: [0, 0, 1],
+  coronalCross:  [1, 0, 0],
+  coronalNormal: [0, -1, 0],
+  coronalPlaneCenter: [0, 0, 0],
+  sagittalUp: [0, 1, 0],
+  sagittalCross: [0, 0, -1],
+  sagittalNormal: [1, 0, 0],
+  sagittalPlaneCenter: [0, 0, 0],
 };
 
 // ----------------------------------------------------------------------------
@@ -106,6 +123,22 @@ export function extend(publicAPI, model, initialValues = {}) {
     'blendMode',
     'filterMode',
     'preferSizeOverAccuracy',
+    'cprScale',
+    'cprCenter',
+    'mprThickness',
+    'mprScale',
+    'axialUp',
+    'axialCross',
+    'axialNormal',
+    'axialPlaneCenter',
+    'coronalUp',
+    'coronalCross',
+    'coronalNormal',
+    'coronalPlaneCenter',
+    'sagittalUp',
+    'sagittalCross',
+    'sagittalNormal',
+    'sagittalPlaneCenter',
   ]);
 
   macro.setGetArray(publicAPI, model, ['ipScalarRange'], 2);

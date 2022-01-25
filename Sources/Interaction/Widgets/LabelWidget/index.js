@@ -37,6 +37,14 @@ function vtkLabelWidget(publicAPI, model) {
   };
 
   publicAPI.scaleAction = (callData) => VOID;
+  publicAPI.handleMouseMove = (callData) => VOID;
+  publicAPI.handleLeftButtonPress = (callData) =>VOID;
+  publicAPI.handleLeftButtonRelease = (callData) =>VOID;
+  publicAPI.handleMiddleButtonPress = (callData) =>VOID;
+  publicAPI.handleMiddleButtonRelease = (callData) =>VOID;
+  publicAPI.handleRightButtonPress = (callData) =>VOID;
+  publicAPI.handleRightButtonRelease = (callData) =>VOID;
+  publicAPI.setCursor = (state) => VOID;
 }
 
 // ----------------------------------------------------------------------------
