@@ -1,3 +1,4 @@
+/* eslint-disable */
 import * as macro from 'vtk.js/Sources/macros';
 import { vec3, mat3, mat4 } from 'gl-matrix';
 // import vtkBoundingBox       from 'vtk.js/Sources/Common/DataModel/BoundingBox';

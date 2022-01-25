@@ -18,6 +18,9 @@
     "graphics",
     "paraviewweb"
   ],
+  "publishConfig": {
+    "registry": "http://repo.healthhub.kr/repository/npm-private/"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/kitware/vtk-js.git"
@@ -165,6 +168,10 @@
       "path": "cz-conventional-changelog"
     }
   },
+  "size-limit": {
+    "path": "./Sources/index.js",
+    "limit": "200 KB"
+  },
   "bin": {
     "vtkDataConverter": "./Utilities/DataGenerator/convert-cli.js",
     "xml2json": "./Utilities/XMLConverter/xml2json-cli.js"
@@ -221,8 +228,5 @@
       ],
       "@semantic-release/github"
     ]
-  },
-  "publishConfig": {
-    "access": "public"
   }
 }
