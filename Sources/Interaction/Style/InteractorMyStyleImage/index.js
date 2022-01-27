@@ -6,7 +6,7 @@ import { States } from 'vtk.js/Sources/Rendering/Core/InteractorStyle/Constants'
 import { State } from '../../Widgets/LineRepresentation/Constants';
 
 // ----------------------------------------------------------------------------
-// vtkInteractorStyleImage methods
+// vtkInteractorMyStyleImage methods
 // ----------------------------------------------------------------------------
 
 function vtkInteractorMyStyleImage(publicAPI, model) {
@@ -85,9 +85,10 @@ function vtkInteractorMyStyleImage(publicAPI, model) {
         publicAPI.endSlice();
         break;
 
-      case States.IS_DOLLY:
+      case State.IS_DOLLY:
         publicAPI.endDolly();
         break;
+
       default:
         publicAPI.superHandleRightButtonRelease();
         break;
@@ -95,16 +96,16 @@ function vtkInteractorMyStyleImage(publicAPI, model) {
   };
 
   //--------------------------------------------------------------------------
-  publicAPI.sueprHandleLeftButtonPress = publicAPI.handleLeftButtonPress;
+  publicAPI.superHandleLeftButtonPress = publicAPI.handleLeftButtonPress;
   publicAPI.handleLeftButtonPress = (callData) => {
     const pos = callData.position;
     model.previousPosition = pos;
 
     publicAPI.startDolly();
-  }
+  };
 
   //--------------------------------------------------------------------------
-  publicAPI.sueprHandleLeftButtonRelease = publicAPI.handleLeftButtonRelease;
+  publicAPI.superHandleLeftButtonRelease = publicAPI.handleLeftButtonRelease;
   publicAPI.handleLeftButtonRelease = () => {
     switch (model.state) {
       case States.IS_WINDOW_LEVEL:
@@ -120,7 +121,7 @@ function vtkInteractorMyStyleImage(publicAPI, model) {
         break;
 
       default:
-        publicAPI.sueprHandleLeftButtonRelease();
+        publicAPI.superHandleRightLeftRelease();
         break;
     }
   };
@@ -212,6 +213,16 @@ function vtkInteractorMyStyleImage(publicAPI, model) {
   };
 
   //----------------------------------------------------------------------------
+  publicAPI.handleMouseDolly = (renderer, position) => {
+    const dy = position.y - model.previousPosition.y;
+    const rwi = model.interactor;
+    const center = rwi.getView().getViewportCenter(renderer);
+    const dyf = (model.motionFactor * dy) / center[1];
+
+    publicAPI.dollyByFactor(renderer, 1.1 ** dyf);
+  };
+
+  //----------------------------------------------------------------------------
   publicAPI.dollyByFactor = (renderer, factor) => {
     if (Number.isNaN(factor)) {
       return;
@@ -231,7 +242,7 @@ function vtkInteractorMyStyleImage(publicAPI, model) {
       renderer.updateLightsGeometryToFollowCamera();
     }
   };
-  
+
   //----------------------------------------------------------------------------
   publicAPI.slice = (renderer, position) => {
     const rwi = model.interactor;
@@ -345,7 +356,7 @@ export function extend(publicAPI, model, initialValues = {}) {
   // For more macro methods, see "Sources/macros.js"
 
   // Object specific methods
-  vtkInteractorStyleImage(publicAPI, model);
+  vtkInteractorMyStyleImage(publicAPI, model);
 }
 
 // ----------------------------------------------------------------------------

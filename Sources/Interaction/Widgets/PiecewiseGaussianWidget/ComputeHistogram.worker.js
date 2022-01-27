@@ -22,6 +22,10 @@ registerWebworker(function (message, emit) {
     histogram[idx] += 1;
   }
 
+  for (var j=0; j<numberOfBins; j++) {
+    histogram[j] = Math.sqrt(histogram[j]);
+  }
+  
   return Promise.resolve(
     new registerWebworker.TransferableResponse(histogram, [histogram.buffer])
   );
