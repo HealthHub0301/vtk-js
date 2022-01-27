@@ -19,7 +19,7 @@
     "paraviewweb"
   ],
   "publishConfig": {
-    "registry": "http://repo.healthhub.kr/repository/npm-private/"
+    "registry": "https://repo.healthhub.kr/repository/npm-private/"
   },
   "repository": {
     "type": "git",

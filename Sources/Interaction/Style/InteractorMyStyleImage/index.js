@@ -350,7 +350,7 @@ export function extend(publicAPI, model, initialValues = {}) {
 
 // ----------------------------------------------------------------------------
 
-export const newInstance = macro.newInstance(extend, 'vtkInteractorStyleImage');
+export const newInstance = macro.newInstance(extend, 'vtkInteractorMyStyleImage');
 
 // ----------------------------------------------------------------------------
 
