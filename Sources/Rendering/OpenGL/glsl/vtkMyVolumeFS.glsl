@@ -587,9 +587,6 @@ vec4 getColorForValue(vec4 tValue, vec4 tValue2, vec3 posIS, vec3 tstep)
   #endif
   #endif
 
-
-
-
   #endif
 
   return tColor;
@@ -769,9 +766,6 @@ vec4 getSumColorForValue(vec4 tValue, vec4 tValue2, vec3 posIS, vec3 tstep)
   #endif
   #endif
   #endif
-
-
-
 
   #endif
 
