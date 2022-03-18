@@ -1,4 +1,3 @@
-/* eslint-disable */
 import * as macro from 'vtk.js/Sources/macros';
 import { vec3, mat3, mat4 } from 'gl-matrix';
 // import vtkBoundingBox       from 'vtk.js/Sources/Common/DataModel/BoundingBox';
@@ -1511,7 +1510,6 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
         cvTable[idx + 0] = DATA.CPR.CPRPoints[i].velocity[0];
         cvTable[idx + 1] = DATA.CPR.CPRPoints[i].velocity[1];
         cvTable[idx + 2] = DATA.CPR.CPRPoints[i].velocity[2];
-
 
         crTable[idx + 0] = DATA.CPR.CPRPoints[i].rayDir[0];
         crTable[idx + 1] = DATA.CPR.CPRPoints[i].rayDir[1];

@@ -1,4 +1,3 @@
-/* eslint-disable */
 import macro from 'vtk.js/Sources/macros';
 import * as vtkMath from 'vtk.js/Sources/Common/Core/Math';
 import Constants from 'vtk.js/Sources/Rendering/Core/VolumeMapper/Constants';
@@ -74,7 +73,6 @@ function vtkVolumeMapper(publicAPI, model) {
     publicAPI.setFilterMode(FilterMode.RAW);
   };
 }
-
 
 // ----------------------------------------------------------------------------
 // Object factory

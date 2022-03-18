@@ -1,6 +1,7 @@
 import macro from 'vtk.js/Sources/macros';
 import vtkImageData from 'vtk.js/Sources/Common/DataModel/ImageData';
 import vtkDataArray from 'vtk.js/Sources/Common/Core/DataArray';
+import { isNumber } from 'lodash';
 
 const { vtkErrorMacro } = macro;
 
@@ -100,9 +101,10 @@ function convertItkToVtkImage(itkImage, options = {}) {
   // Associate the point data that are 3D vectors / tensors
   // Refer to itk-js/src/PixelTypes.js for numerical values
   let ITKPixelCase = null;
-  if (typeof itkImage.imageType.pixelType === 'number') {
+  if(typeof itkImage.imageType.pixelType == "number"){
     ITKPixelCase = itkImage.imageType.pixelType;
-  } else if (typeof itkImage.imageType.pixelType === 'string') {
+  }
+  else if(typeof itkImage.imageType.pixelType == "string"){
     ITKPixelCase = ITKPixelTypes[itkImage.imageType.pixelType];
   }
 

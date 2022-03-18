@@ -413,6 +413,9 @@ vec4 normal, float goscale, float goshift, float gomin, float gomax)
   #endif
 }
 
+
+
+
   #if vtkLightComplexity > 0
 void applyLighting(inout vec3 tColor, vec4 normal)
 {
@@ -586,6 +589,7 @@ vec4 getColorForValue(vec4 tValue, vec4 tValue2, vec3 posIS, vec3 tstep)
   #endif
   #endif
   #endif
+
 
   #endif
 
@@ -766,6 +770,7 @@ vec4 getSumColorForValue(vec4 tValue, vec4 tValue2, vec3 posIS, vec3 tstep)
   #endif
   #endif
   #endif
+
 
   #endif
 
