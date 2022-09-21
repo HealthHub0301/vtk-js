@@ -121,7 +121,7 @@ function vtkInteractorMyStyleImage(publicAPI, model) {
         break;
 
       default:
-        publicAPI.superHandleRightLeftRelease();
+        publicAPI.superHandleLeftButtonRelease();
         break;
     }
   };

@@ -1,3 +1,4 @@
+/* eslint-disable */
 import { vec4, mat4 } from 'gl-matrix';
 
 import macro from 'vtk.js/Sources/macros';
