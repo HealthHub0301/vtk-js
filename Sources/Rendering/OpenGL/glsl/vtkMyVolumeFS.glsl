@@ -567,6 +567,11 @@ vec4 getColorForValue(vec4 tValue, vec3 posIS, vec3 tstep)
   #if vtkNumComponents == 1
     vec4 tColor = texture2D(ctexture, vec2(tValue.r * cscale0 + cshift0, 0.5));
     tColor.a = goFactor.x*texture2D(otexture, vec2(tValue.r * oscale0 + oshift0, 0.5)).r;
+  #if vtkBlendMode == 6
+  if (normal0.w < GradientOpacityThreshold) {
+    tColor.a = tColor.a * (normal0.w / GradientOpacityThreshold);
+  }
+  #endif
   #endif
 
   #if defined(vtkIndependentComponentsOn) && vtkNumComponents >= 2
