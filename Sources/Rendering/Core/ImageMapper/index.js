@@ -250,7 +250,6 @@ function vtkImageMapper(publicAPI, model) {
     if (!model.useCustomExtents) {
       return image.getBounds();
     }
-
     const ex = model.customDisplayExtent.slice();
     const { ijkMode } = publicAPI.getClosestIJKAxis();
     let nSlice = model.slice;
@@ -442,7 +441,12 @@ const DEFAULT_VALUES = {
   displayExtent: [0, 0, 0, 0, 0, 0],
   customDisplayExtent: [0, 0, 0, 0],
   useCustomExtents: false,
+  // <--MPR 관련 파라미터 추가-->
+  MprThickness: 1,
+  MprSlicingMode: 2,
+  MprMode: 0,
   slice: 0,
+  // <--------------------->
   slicingMode: SlicingMode.NONE,
   closestIJKAxis: { ijkMode: SlicingMode.NONE, flip: false },
   renderToRectangle: false,
@@ -459,7 +463,12 @@ export function extend(publicAPI, model, initialValues = {}) {
 
   macro.get(publicAPI, model, ['slicingMode']);
   macro.setGet(publicAPI, model, [
+    // <--MPR 관련 파라미터 추가-->
+    'MprThickness',
+    'MprSlicingMode',
+    'MprMode',
     'slice',
+    // <--------------------->
     'closestIJKAxis',
     'useCustomExtents',
     'renderToRectangle',

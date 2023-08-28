@@ -834,6 +834,7 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
       program.setUniformf('ciheight',DATA.CPR.imageWidth);
       program.setUniformf('cprThickness', DATA.CPR.thickness);
     }
+
     program.setUniformf('mprThickness', model.renderable.getMprThickness());
     program.setUniform3fArray('mprScale', model.renderable.getMprScale());
 
@@ -1124,7 +1125,15 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
     if (iType === InterpolationType.NEAREST) {
       model.scalarTexture.setMinificationFilter(Filter.NEAREST);
       model.scalarTexture.setMagnificationFilter(Filter.NEAREST);
-    } else {
+    }
+    //<--영역 선택 기능을 사용중일 때, 볼륨 렌더러에서 선택 범위의 색상이 깨지는 오류를 방지하기 위해 nearest filter 설정-->
+    //텍스처에 저장된 mask 값이 근사화되어 다른 값(다른 색상)으로 변경돼 잘못 가시화될 수 있습니다. 이를 해결하기 위해 nearest filter를 사용합니다.
+    else if(model.renderable.getPaintMode()) {
+      model.scalarTexture.setMinificationFilter(Filter.NEAREST);
+      model.scalarTexture.setMagnificationFilter(Filter.NEAREST);
+    }
+    //<--------------------->
+    else {
       model.scalarTexture.setMinificationFilter(Filter.LINEAR);
       model.scalarTexture.setMagnificationFilter(Filter.LINEAR);
     }
@@ -1327,8 +1336,16 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
       for (let i = 0; i < 32 * 32; ++i) {
         oTable[i] = 255.0 * Math.random();
       }
-      model.jitterTexture.setMinificationFilter(Filter.LINEAR);
-      model.jitterTexture.setMagnificationFilter(Filter.LINEAR);
+      //<--영역 선택 기능을 사용중일 때, 볼륨 렌더러에서 선택 범위의 색상이 깨지는 오류를 방지하기 위해 nearest filter 설정-->
+      //텍스처에 저장된 mask 값이 근사화되어 다른 값(다른 색상)으로 변경돼 잘못 가시화될 수 있습니다. 이를 해결하기 위해 nearest filter를 사용합니다.
+      if(model.renderable.getPaintMode()) {
+        model.jitterTexture.setMinificationFilter(Filter.NEAREST);
+        model.jitterTexture.setMagnificationFilter(Filter.NEAREST);
+      }
+      else {
+        model.jitterTexture.setMinificationFilter(Filter.LINEAR);
+        model.jitterTexture.setMagnificationFilter(Filter.LINEAR);
+      }
       model.jitterTexture.create2DFromRaw(
         32,
         32,
@@ -1336,6 +1353,7 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
         VtkDataTypes.UNSIGNED_CHAR,
         oTable
       );
+      //<--------------------->
     }
 
     const numComp = scalars.getNumberOfComponents();
@@ -1359,6 +1377,7 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
 
         const oRange = ofun.getRange();
         ofun.getTable(oRange[0], oRange[1], oWidth, tmpTable, 1);
+
         // adjust for sample distance etc
         for (let i = 0; i < oWidth; ++i) {
           ofTable[c * oWidth * 2 + i] =
@@ -1371,14 +1390,27 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
           sofTable[c * oWidth * 2 + i + oWidth] = sofTable[c * oWidth * 2 + i];
         }
       }
-
-      model.opacityTexture.releaseGraphicsResources(model.openGLRenderWindow);
-      model.opacityTexture.setMinificationFilter(Filter.LINEAR);
-      model.opacityTexture.setMagnificationFilter(Filter.LINEAR);
-
-      model.sopacityTextrue.releaseGraphicsResources(model.openGLRenderWindow);
-      model.sopacityTextrue.setMinificationFilter(Filter.LINEAR);
-      model.sopacityTextrue.setMagnificationFilter(Filter.LINEAR);
+      //<--영역 선택 기능을 사용중일 때, 볼륨 렌더러에서 선택 범위의 색상이 깨지는 오류를 방지하기 위해 nearest filter 설정-->
+      //텍스처에 저장된 mask 값이 근사화되어 다른 값(다른 색상)으로 변경돼 잘못 가시화될 수 있습니다. 이를 해결하기 위해 nearest filter를 사용합니다.
+      if(model.renderable.getPaintMode()) {
+        model.opacityTexture.releaseGraphicsResources(model.openGLRenderWindow);
+        model.opacityTexture.setMinificationFilter(Filter.NEAREST);
+        model.opacityTexture.setMagnificationFilter(Filter.NEAREST);
+  
+        model.sopacityTextrue.releaseGraphicsResources(model.openGLRenderWindow);
+        model.sopacityTextrue.setMinificationFilter(Filter.NEAREST);
+        model.sopacityTextrue.setMagnificationFilter(Filter.NEAREST);
+      }
+      else {
+        model.opacityTexture.releaseGraphicsResources(model.openGLRenderWindow);
+        model.opacityTexture.setMinificationFilter(Filter.LINEAR);
+        model.opacityTexture.setMagnificationFilter(Filter.LINEAR);
+  
+        model.sopacityTextrue.releaseGraphicsResources(model.openGLRenderWindow);
+        model.sopacityTextrue.setMinificationFilter(Filter.LINEAR);
+        model.sopacityTextrue.setMagnificationFilter(Filter.LINEAR);
+      }
+      //<--------------------->
 
       // use float texture where possible because we really need the resolution
       // for this table. Errors in low values of opacity accumulate to
@@ -1464,14 +1496,27 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
           scTable[c * cWidth * 6 + i + 2 + cWidth * 3] = scTable[c * cWidth * 6 + i + 2]
         }
       }
+      //<--영역 선택 기능을 사용중일 때, 볼륨 렌더러에서 선택 범위의 색상이 깨지는 오류를 방지하기 위해 nearest filter 설정-->
+      //텍스처에 저장된 mask 값이 근사화되어 다른 값(다른 색상)으로 변경돼 잘못 가시화될 수 있습니다. 이를 해결하기 위해 nearest filter를 사용합니다.
+      if(model.renderable.getPaintMode()) {
+        model.colorTexture.releaseGraphicsResources(model.openGLRenderWindow);
+        model.colorTexture.setMinificationFilter(Filter.NEAREST);
+        model.colorTexture.setMagnificationFilter(Filter.NEAREST);
+  
+        model.scolorTexture.releaseGraphicsResources(model.openGLRenderWindow);
+        model.scolorTexture.setMinificationFilter(Filter.NEAREST);
+        model.scolorTexture.setMagnificationFilter(Filter.NEAREST);
+      }
+      else {
+        model.colorTexture.releaseGraphicsResources(model.openGLRenderWindow);
+        model.colorTexture.setMinificationFilter(Filter.LINEAR);
+        model.colorTexture.setMagnificationFilter(Filter.LINEAR);
 
-      model.colorTexture.releaseGraphicsResources(model.openGLRenderWindow);
-      model.colorTexture.setMinificationFilter(Filter.LINEAR);
-      model.colorTexture.setMagnificationFilter(Filter.LINEAR);
-
-      model.scolorTexture.releaseGraphicsResources(model.openGLRenderWindow);
-      model.scolorTexture.setMinificationFilter(Filter.LINEAR);
-      model.scolorTexture.setMagnificationFilter(Filter.LINEAR);
+        model.scolorTexture.releaseGraphicsResources(model.openGLRenderWindow);
+        model.scolorTexture.setMinificationFilter(Filter.LINEAR);
+        model.scolorTexture.setMagnificationFilter(Filter.LINEAR);
+      }
+      //<--------------------->
 
       model.colorTexture.create2DFromRaw(
         cWidth,
@@ -1567,10 +1612,11 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
         ciTable
       )
     }
-
+    
     // rebuild the scalarTexture if the data has changed
     toString = `${image.getMTime()}`;
     if (model.scalarTextureString !== toString) {
+      console.log(model.renderable.getPreferSizeOverAccuracy());
       // Build the textures
       const dims = image.getDimensions();
       model.scalarTexture.releaseGraphicsResources(model.openGLRenderWindow);
@@ -1584,7 +1630,6 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
         scalars.getData(),
         model.renderable.getPreferSizeOverAccuracy()
       );
-      // console.log(model.scalarTexture.get());
       model.scalarTextureString = toString;
     }
 

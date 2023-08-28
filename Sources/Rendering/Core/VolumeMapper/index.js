@@ -106,6 +106,9 @@ const DEFAULT_VALUES = {
   sagittalCross: [0, 0, -1],
   sagittalNormal: [1, 0, 0],
   sagittalPlaneCenter: [0, 0, 0],
+  //<--영역 선택 기능이 작동 중인지 여부를 판별하는 파라미터 추가-->
+  paintMode: false,
+  //<--------------------->
 };
 
 // ----------------------------------------------------------------------------
@@ -139,6 +142,9 @@ export function extend(publicAPI, model, initialValues = {}) {
     'sagittalCross',
     'sagittalNormal',
     'sagittalPlaneCenter',
+    //<--영역 선택 기능이 작동 중인지 여부를 판별하는 파라미터 추가-->
+    'paintMode',
+    //<--------------------->
   ]);
 
   macro.setGetArray(publicAPI, model, ['ipScalarRange'], 2);
