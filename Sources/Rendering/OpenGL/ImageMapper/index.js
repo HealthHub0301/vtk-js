@@ -840,8 +840,6 @@ function vtkOpenGLImageMapper(publicAPI, model) {
 
     model.volumeTexture.setMinificationFilter(Filter.LINEAR);
     model.volumeTexture.setMagnificationFilter(Filter.LINEAR);
-
-    model.openGLTexture.setGenerateMipmap(true);
     // <--------------------->
 
     const numComp = imgScalars.getNumberOfComponents();
