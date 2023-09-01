@@ -807,10 +807,6 @@ function vtkOpenGLImageMapper(publicAPI, model) {
       return;
     }
 
-    // <--텍스처에 저장할 볼륨 데이터-->
-    const volume = DATA.getVolume();
-    const volScalars = volume.getVTKImage().getPointData().getScalars();
-    // <--------------------->
     const imgScalars =
       image.getPointData() && image.getPointData().getScalars();
     if (!imgScalars) {
@@ -1020,23 +1016,41 @@ function vtkOpenGLImageMapper(publicAPI, model) {
     // <--------------------->
     // <--텍스처에 볼륨 데이터를 저장-->
     if (model.volumeTextureString != 1) {
-      const dims = volume.getExtends();
-      // rebuild the scalarTexture if the data has changed
+      const volume = DATA.getVolume();
+      const volScalars = volume.getVTKImage().getPointData().getScalars();
 
-      model.volumeTexture.releaseGraphicsResources(model.openGLRenderWindow);
-      model.volumeTexture.resetFormatAndType();
-      model.volumeTexture.create3DFilterableFromRaw(
-        Number(dims[0]),
-        Number(dims[1]),
-        Number(dims[2]),
-        numComp,
-        volScalars.getDataType(),
-        volScalars.getData(),
-        true
-        // model.renderable.getPreferSizeOverAccuracy()
-        // Whether to use halfFloat representation of float, when it is inaccurate
-      );
+      if (model.renderable.getMprMode()) {
+        // <--텍스처에 저장할 볼륨 데이터-->
+        // <--------------------->
+        const dims = volume.getExtends();
+        // rebuild the scalarTexture if the data has changed
 
+        model.volumeTexture.releaseGraphicsResources(model.openGLRenderWindow);
+        model.volumeTexture.resetFormatAndType();
+        model.volumeTexture.create3DFilterableFromRaw(
+          Number(dims[0]),
+          Number(dims[1]),
+          Number(dims[2]),
+          numComp,
+          volScalars.getDataType(),
+          volScalars.getData(),
+          true
+          // model.renderable.getPreferSizeOverAccuracy()
+          // Whether to use halfFloat representation of float, when it is inaccurate
+        );
+      } else {
+        model.volumeTexture.releaseGraphicsResources(model.openGLRenderWindow);
+        model.volumeTexture.resetFormatAndType();
+        model.volumeTexture.create3DFilterableFromRaw(
+          1,
+          1,
+          1,
+          numComp,
+          volScalars.getDataType(),
+          new Uint16Array(1).fill(1),
+          true
+        );
+      }
       model.volumeTexture.activate();
       model.volumeTexture.sendParameters();
       model.volumeTexture.deactivate();
