@@ -1133,7 +1133,9 @@ function vtkOpenGLTexture(publicAPI, model) {
     numComps,
     dataType,
     data,
-    preferSizeOverAccuracy = false
+    preferSizeOverAccuracy = false,
+    rescaleSlope = 1,
+    rescaleIntercept = 0,
   ) => {
     const numPixelsIn = width * height * depth;
 
@@ -1205,8 +1207,9 @@ function vtkOpenGLTexture(publicAPI, model) {
       const scaleInverse = computedScale.map((s) => 1 / s);
       for (let i = 0; i < numPixelsIn; i++) {
         for (let nc = 0; nc < numComps; nc++) {
+          newArray[count] = data[count] * rescaleSlope + rescaleIntercept;
           newArray[count] =
-            (data[count] - computedOffset[nc]) * scaleInverse[nc];
+            (newArray[count] - computedOffset[nc]) * scaleInverse[nc];
           count++;
         }
       }

@@ -45,20 +45,6 @@ function arrayEquals(a, b) {
 // ----------------------------------------------------------------------------
 
 function vtkOpenGLVolumeMapper(publicAPI, model) {
-  function getVolumeInfo() {
-    const rescaleSlope = model.renderable.getRescaleSlope();
-    const rescaleIntercept = model.renderable.getRescaleIntercept();
-    console.log('rescaleSlope', rescaleSlope);
-    console.log('rescaleIntercept', rescaleIntercept);
-    const volInfo = model.scalarTexture.getVolumeInfo();
-    console.log('volInfo', volInfo);
-    const scale = volInfo.scale.map(sc => sc * rescaleSlope);
-    const dataComputedScale = volInfo.dataComputedScale.map(sc => sc * rescaleSlope);
-    const offset = volInfo.offset.map((ofs, i) => ofs + rescaleIntercept * volInfo.scale[i]);
-    const dataComputedOffset = volInfo.dataComputedOffset.map((ofs, i) => ofs + rescaleIntercept * volInfo.scale[i]);
-    return { ...volInfo, scale, offset, dataComputedOffset, dataComputedScale };
-  }
-
   // Set our className
   model.classHierarchy.push('vtkOpenGLVolumeMapper');
 
@@ -547,7 +533,7 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
     program.setUniformi('texture1', model.scalarTexture.getTextureUnit());
     program.setUniformf('sampleDistance', model.renderable.getSampleDistance());
 
-    const volInfo = getVolumeInfo();
+    const volInfo = model.scalarTexture.getVolumeInfo();
     const ipScalarRange = model.renderable.getIpScalarRange();
 
     const minVals = [];
@@ -707,7 +693,7 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
     program.setUniform3i('volumeDimensions', dims[0], dims[1], dims[2]);
 
     if (!model.openGLRenderWindow.getWebgl2()) {
-      const volInfo = getVolumeInfo();
+      const volInfo = model.scalarTexture.getVolumeInfo();
       program.setUniformf('texWidth', model.scalarTexture.getWidth());
       program.setUniformf('texHeight', model.scalarTexture.getHeight());
       program.setUniformi('xreps', volInfo.xreps);
@@ -876,7 +862,7 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
     program.setUniformi('crtexture', model.cprRayTexture.getTextureUnit());
     program.setUniformi('citexture', model.cprImageTexture.getTextureUnit());
 
-    const volInfo = getVolumeInfo();
+    const volInfo = model.scalarTexture.getVolumeInfo();
     const vprop = actor.getProperty();
 
     // set the component mix when independent
@@ -1642,7 +1628,9 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
         numComp,
         scalars.getDataType(),
         scalars.getData(),
-        model.renderable.getPreferSizeOverAccuracy()
+        model.renderable.getPreferSizeOverAccuracy(),
+        model.renderable.getRescaleSlope(),
+        model.renderable.getRescaleIntercept(),
       );
       model.scalarTextureString = toString;
     }
