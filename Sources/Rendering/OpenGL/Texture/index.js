@@ -1135,7 +1135,7 @@ function vtkOpenGLTexture(publicAPI, model) {
     data,
     preferSizeOverAccuracy = false,
     rescaleSlope = 1,
-    rescaleIntercept = 0,
+    rescaleIntercept = 0
   ) => {
     const numPixelsIn = width * height * depth;
 
