@@ -71,15 +71,22 @@ export function arrayMax(arr, offset = 0, stride = 1) {
   return maxValue;
 }
 
-export function arrayRange(arr, offset = 0, stride = 1) {
+export function arrayRange(
+  arr,
+  offset = 0,
+  stride = 1,
+  rescaleSlope = 1,
+  rescaleIntercept = 0
+) {
   let minValue = Infinity;
   let maxValue = -Infinity;
   for (let i = offset, len = arr.length; i < len; i += stride) {
-    if (arr[i] < minValue) {
-      minValue = arr[i];
+    const rescaledValue = arr[i] * rescaleSlope + rescaleIntercept;
+    if (rescaledValue < minValue) {
+      minValue = rescaledValue;
     }
-    if (maxValue < arr[i]) {
-      maxValue = arr[i];
+    if (maxValue < rescaledValue) {
+      maxValue = rescaledValue;
     }
   }
 
