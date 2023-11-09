@@ -605,8 +605,14 @@ function vtkOpenGLImageMapper(publicAPI, model) {
         cl = 0.5 * (cRange[1] + cRange[0]);
       }
 
-      const scale = oglShiftScale.scale / cw;
-      const shift = (oglShiftScale.shift - cl) / cw + 0.5;
+      const rescaleSlope = model.renderable.getRescaleSlope();
+      const rescaleIntercept = model.renderable.getRescaleIntercept();
+
+      const oglScale = oglShiftScale.scale / cw;
+      const oglShift = (oglShiftScale.shift - cl) / cw + 0.5;
+
+      const scale = rescaleSlope * oglScale;
+      const shift = rescaleIntercept * oglScale + oglShift;
       cellBO.getProgram().setUniformf(`cshift${i}`, shift);
       cellBO.getProgram().setUniformf(`cscale${i}`, scale);
     }
@@ -621,8 +627,15 @@ function vtkOpenGLImageMapper(publicAPI, model) {
         const pwfRange = pwfun.getRange();
         const length = pwfRange[1] - pwfRange[0];
         const mid = 0.5 * (pwfRange[0] + pwfRange[1]);
-        pwfScale = oglShiftScale.scale / length;
-        pwfShift = (oglShiftScale.shift - mid) / length + 0.5;
+
+        const rescaleSlope = model.renderable.getRescaleSlope();
+        const rescaleIntercept = model.renderable.getRescaleIntercept();
+
+        const oglScale = oglShiftScale.scale / length;
+        const oglShift = (oglShiftScale.shift - mid) / length + 0.5;
+
+        pwfScale = rescaleSlope * oglScale;
+        pwfShift = rescaleIntercept * oglScale + oglShift;
       }
       cellBO.getProgram().setUniformf(`pwfshift${i}`, pwfShift);
       cellBO.getProgram().setUniformf(`pwfscale${i}`, pwfScale);

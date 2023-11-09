@@ -447,6 +447,8 @@ const DEFAULT_VALUES = {
   MprMode: 0,
   slice: 0,
   // <--------------------->
+  RescaleSlope: 1,
+  RescaleIntercept: 0,
   slicingMode: SlicingMode.NONE,
   closestIJKAxis: { ijkMode: SlicingMode.NONE, flip: false },
   renderToRectangle: false,
@@ -467,6 +469,8 @@ export function extend(publicAPI, model, initialValues = {}) {
     'MprThickness',
     'MprSlicingMode',
     'MprMode',
+    'RescaleSlope',
+    'RescaleIntercept',
     'slice',
     // <--------------------->
     'closestIJKAxis',
