@@ -344,9 +344,9 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
       actor.getProperty().getShade() &&
       (
         model.renderable.getBlendMode() === BlendMode.COMPOSITE_BLEND ||
-        model.renderable.getBlendMode() === 4 ||
-        model.renderable.getBlendMode() === 5 ||
-        model.renderable.getBlendMode() === 6
+        model.renderable.getBlendMode() === BlendMode.ADDITIVE_INTENSITY_BLEND ||
+        model.renderable.getBlendMode() === BlendMode.INTERPOLATED_BLEND ||
+        model.renderable.getBlendMode() === BlendMode.GRADIENT_OPACITY_BLEND
       )
     ) {
       // consider the lighting complexity to determine which case applies
@@ -1539,7 +1539,7 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
     }
 
     let width = 1;
-    if(model.renderable.getBlendMode() == 7 &&
+    if(model.renderable.getBlendMode() == BlendMode.CPR_THICKNESS_BLEND &&
      DATA.CPR != null &&
      DATA.CPR.imageToPositionMap != null
      ){
@@ -1550,7 +1550,7 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
     const crTable = new Float32Array(width * 3);
     let ciTable = new Float32Array(width * 3);
 
-    if(model.renderable.getBlendMode() == 7 &&
+    if(model.renderable.getBlendMode() == BlendMode.CPR_THICKNESS_BLEND &&
     DATA.CPR != null &&
     DATA.CPR.imageToPositionMap != null
     ){
@@ -1594,7 +1594,7 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
       crTable
     )
 
-    if(model.renderable.getBlendMode() == 7 &&
+    if(model.renderable.getBlendMode() == BlendMode.CPR_THICKNESS_BLEND &&
     DATA.CPR != null &&
     DATA.CPR.imageToPositionMap != null
     ){
