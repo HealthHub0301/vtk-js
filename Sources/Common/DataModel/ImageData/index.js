@@ -487,7 +487,12 @@ function vtkImageData(publicAPI, model) {
    * @param {Number?} comp the scalar component index for multi-component scalars
    * @return {Number|NaN} the corresponding pixel's scalar value
    */
-  publicAPI.getScalarValueFromWorld = (xyz, comp = 0) => {
+  publicAPI.getScalarValueFromWorld = (
+    xyz,
+    comp = 0,
+    rescaleSlope = 1,
+    rescaleIntercept = 0
+  ) => {
     const numberOfComponents = publicAPI
       .getPointData()
       .getScalars()
@@ -504,10 +509,11 @@ function vtkImageData(publicAPI, model) {
       return offsetIndex;
     }
 
-    return publicAPI
-      .getPointData()
-      .getScalars()
-      .getComponent(offsetIndex, comp);
+    return (
+      publicAPI.getPointData().getScalars().getComponent(offsetIndex, comp) *
+        rescaleSlope +
+      rescaleIntercept
+    );
   };
 }
 

@@ -171,7 +171,7 @@ export interface vtkImageData extends vtkDataSet {
 	 * @param {Number} [comp] The scalar component index for multi-component scalars.
 	 * @return {number|NaN} The corresponding pixel's scalar value.
 	 */
-	getScalarValueFromWorld(xyz: number[], comp?: number): number;
+	getScalarValueFromWorld(xyz: number[], comp?: number, rescaleSlope?: number, rescaleIntercept?: number): number;
 
 	/**
 	 * Set the spacing [width, height, length] of the cubical cells that compose
