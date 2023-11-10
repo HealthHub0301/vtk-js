@@ -342,9 +342,12 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
     let lightComplexity = 0;
     if (
       actor.getProperty().getShade() &&
-      (model.renderable.getBlendMode() === BlendMode.COMPOSITE_BLEND ||
+      (
+        model.renderable.getBlendMode() === BlendMode.COMPOSITE_BLEND ||
         model.renderable.getBlendMode() === 4 ||
-        model.renderable.getBlendMode() === 5)
+        model.renderable.getBlendMode() === 5 ||
+        model.renderable.getBlendMode() === 6
+      )
     ) {
       // consider the lighting complexity to determine which case applies
       // simple headlight, Light Kit, the whole feature set of VTK
