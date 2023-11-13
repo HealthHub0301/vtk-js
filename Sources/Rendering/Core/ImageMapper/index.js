@@ -1,14 +1,11 @@
 import Constants from 'vtk.js/Sources/Rendering/Core/ImageMapper/Constants';
 import macro from 'vtk.js/Sources/macros';
-import vtkAbstractMapper from 'vtk.js/Sources/Rendering/Core/AbstractMapper';
+import vtkAbstractImageMapper from 'vtk.js/Sources/Rendering/Core/AbstractImageMapper';
+import * as pickingHelper from 'vtk.js/Sources/Rendering/Core/AbstractImageMapper/helper';
 import * as vtkMath from 'vtk.js/Sources/Common/Core/Math';
-import vtkPlane from 'vtk.js/Sources/Common/DataModel/Plane';
 import CoincidentTopologyHelper from 'vtk.js/Sources/Rendering/Core/Mapper/CoincidentTopologyHelper';
 
-import { vec3 } from 'gl-matrix';
-
 const { staticOffsetAPI, otherStaticMethods } = CoincidentTopologyHelper;
-const { vtkWarningMacro } = macro;
 const { SlicingMode } = Constants;
 
 // ----------------------------------------------------------------------------
@@ -20,7 +17,7 @@ function vtkImageMapper(publicAPI, model) {
   model.classHierarchy.push('vtkImageMapper');
 
   publicAPI.getSliceAtPosition = (pos) => {
-    const image = publicAPI.getInputData();
+    const image = publicAPI.getCurrentImage();
 
     let pos3;
     if (pos.length === 3) {
@@ -122,12 +119,7 @@ function vtkImageMapper(publicAPI, model) {
 
   publicAPI.getSlicingModeNormal = () => {
     const out = [0, 0, 0];
-    const a = publicAPI.getInputData().getDirection();
-    const mat3 = [
-      [a[0], a[1], a[2]],
-      [a[3], a[4], a[5]],
-      [a[6], a[7], a[8]],
-    ];
+    const mat3 = publicAPI.getCurrentImage().getDirection();
 
     switch (model.slicingMode) {
       case SlicingMode.X:
@@ -155,16 +147,16 @@ function vtkImageMapper(publicAPI, model) {
   };
 
   function computeClosestIJKAxis() {
-    let inVec3;
+    let xyzMode;
     switch (model.slicingMode) {
       case SlicingMode.X:
-        inVec3 = [1, 0, 0];
+        xyzMode = 0;
         break;
       case SlicingMode.Y:
-        inVec3 = [0, 1, 0];
+        xyzMode = 1;
         break;
       case SlicingMode.Z:
-        inVec3 = [0, 0, 1];
+        xyzMode = 2;
         break;
       default:
         model.closestIJKAxis = {
@@ -174,49 +166,19 @@ function vtkImageMapper(publicAPI, model) {
         return;
     }
 
-    // Project vec3 onto direction cosines
-    const out = [0, 0, 0];
     // The direction matrix in vtkImageData is the indexToWorld rotation matrix
     // with a column-major data layout since it is stored as a WebGL matrix.
-    // We need the worldToIndex rotation matrix for the projection, and it needs
-    // to be in a row-major data layout to use vtkMath for operations.
-    // To go from the indexToWorld column-major matrix to the worldToIndex
-    // row-major matrix, we need to transpose it (column -> row) then inverse it.
-    // However, that 3x3 matrix is a rotation matrix which is orthonormal, meaning
-    // that its inverse is equal to its transpose. We therefore need to apply two
-    // transpositions resulting in a no-op.
-    const a = publicAPI.getInputData().getDirection();
-    const mat3 = [
-      [a[0], a[1], a[2]],
-      [a[3], a[4], a[5]],
-      [a[6], a[7], a[8]],
-    ];
-    vtkMath.multiply3x3_vect3(mat3, inVec3, out);
-
-    let maxAbs = 0.0;
-    let ijkMode = -1;
-    let flip = false;
-    for (let axis = 0; axis < out.length; ++axis) {
-      const absValue = Math.abs(out[axis]);
-      if (absValue > maxAbs) {
-        maxAbs = absValue;
-        flip = out[axis] < 0.0;
-        ijkMode = axis;
+    const direction = publicAPI.getCurrentImage().getDirection();
+    const newMatrix = vtkMath.getSparseOrthogonalMatrix(direction);
+    // With {foo}Vector filled with 0s except at {foo}Mode position where it is 1
+    // We have xyzVector = (+/-) newMatrix * ijkVector
+    let ijkMode = 0;
+    for (; ijkMode < 3; ++ijkMode) {
+      if (newMatrix[xyzMode + 3 * ijkMode] !== 0) {
+        break;
       }
     }
-
-    if (maxAbs !== 1.0) {
-      const xyzLabel = 'IJKXYZ'[model.slicingMode];
-      const ijkLabel = 'IJKXYZ'[ijkMode];
-      vtkWarningMacro(
-        `Unaccurate slicing along ${xyzLabel} axis which ` +
-          `is not aligned with any IJK axis of the image data. ` +
-          `Using ${ijkLabel} axis  as a fallback (${maxAbs}% aligned). ` +
-          `Necessitates slice reformat that is not yet implemented.  ` +
-          `You can switch the slicing mode on your mapper to do IJK slicing instead.`
-      );
-    }
-
+    const flip = newMatrix[xyzMode + 3 * ijkMode] < 0;
     model.closestIJKAxis = { ijkMode, flip };
   }
 
@@ -225,7 +187,7 @@ function vtkImageMapper(publicAPI, model) {
       return;
     }
     model.slicingMode = mode;
-    if (publicAPI.getInputData()) {
+    if (publicAPI.getCurrentImage()) {
       computeClosestIJKAxis();
     }
     publicAPI.modified();
@@ -235,7 +197,7 @@ function vtkImageMapper(publicAPI, model) {
     if (
       (model.closestIJKAxis === undefined ||
         model.closestIJKAxis.ijkMode === SlicingMode.NONE) &&
-      publicAPI.getInputData()
+      publicAPI.getCurrentImage()
     ) {
       computeClosestIJKAxis();
     }
@@ -243,7 +205,7 @@ function vtkImageMapper(publicAPI, model) {
   };
 
   publicAPI.getBounds = () => {
-    const image = publicAPI.getInputData();
+    const image = publicAPI.getCurrentImage();
     if (!image) {
       return vtkMath.createUninitializedBounds();
     }
@@ -278,12 +240,12 @@ function vtkImageMapper(publicAPI, model) {
     return image.extentToBounds(ex);
   };
 
-  publicAPI.getBoundsForSlice = (slice = model.slice, thickness = 0) => {
-    const image = publicAPI.getInputData();
+  publicAPI.getBoundsForSlice = (slice = model.slice, halfThickness = 0) => {
+    const image = publicAPI.getCurrentImage();
     if (!image) {
       return vtkMath.createUninitializedBounds();
     }
-    const extent = image.getExtent();
+    const extent = image.getSpatialExtent();
     const { ijkMode } = publicAPI.getClosestIJKAxis();
     let nSlice = slice;
     if (ijkMode !== model.slicingMode) {
@@ -292,16 +254,16 @@ function vtkImageMapper(publicAPI, model) {
     }
     switch (ijkMode) {
       case SlicingMode.I:
-        extent[0] = nSlice - thickness;
-        extent[1] = nSlice + thickness;
+        extent[0] = nSlice - halfThickness;
+        extent[1] = nSlice + halfThickness;
         break;
       case SlicingMode.J:
-        extent[2] = nSlice - thickness;
-        extent[3] = nSlice + thickness;
+        extent[2] = nSlice - halfThickness;
+        extent[3] = nSlice + halfThickness;
         break;
       case SlicingMode.K:
-        extent[4] = nSlice - thickness;
-        extent[5] = nSlice + thickness;
+        extent[4] = nSlice - halfThickness;
+        extent[5] = nSlice + halfThickness;
         break;
       default:
         break;
@@ -309,129 +271,13 @@ function vtkImageMapper(publicAPI, model) {
     return image.extentToBounds(extent);
   };
 
-  publicAPI.getIsOpaque = () => true;
+  publicAPI.intersectWithLineForPointPicking = (p1, p2) =>
+    pickingHelper.intersectWithLineForPointPicking(p1, p2, publicAPI);
 
-  function doPicking(p1, p2) {
-    const imageData = publicAPI.getInputData();
-    const extent = imageData.getExtent();
+  publicAPI.intersectWithLineForCellPicking = (p1, p2) =>
+    pickingHelper.intersectWithLineForCellPicking(p1, p2, publicAPI);
 
-    // Slice origin
-    const ijk = [extent[0], extent[2], extent[4]];
-    const { ijkMode } = publicAPI.getClosestIJKAxis();
-    let nSlice = model.slice;
-    if (ijkMode !== model.slicingMode) {
-      // If not IJK slicing, get the IJK slice from the XYZ position/slice
-      nSlice = publicAPI.getSliceAtPosition(nSlice);
-    }
-    ijk[ijkMode] += nSlice;
-    const worldOrigin = [0, 0, 0];
-    imageData.indexToWorld(ijk, worldOrigin);
-
-    // Normal computation
-    ijk[ijkMode] += 1;
-    const worldNormal = [0, 0, 0];
-    imageData.indexToWorld(ijk, worldNormal);
-    worldNormal[0] -= worldOrigin[0];
-    worldNormal[1] -= worldOrigin[1];
-    worldNormal[2] -= worldOrigin[2];
-    vec3.normalize(worldNormal, worldNormal);
-
-    const intersect = vtkPlane.intersectWithLine(
-      p1,
-      p2,
-      worldOrigin,
-      worldNormal
-    );
-    if (intersect.intersection) {
-      const point = intersect.x;
-      const absoluteIJK = [0, 0, 0];
-      imageData.worldToIndex(point, absoluteIJK);
-      // `t` is the parametric position along the line
-      // defined in Plane.intersectWithLine
-      return {
-        t: intersect.t,
-        absoluteIJK,
-      };
-    }
-    return null;
-  }
-
-  publicAPI.intersectWithLineForPointPicking = (p1, p2) => {
-    const pickingData = doPicking(p1, p2);
-    if (pickingData) {
-      const imageData = publicAPI.getInputData();
-      const extent = imageData.getExtent();
-
-      // Get closer integer ijk
-      // NB: point picking means closest slice, means rounding
-      const ijk = [
-        Math.round(pickingData.absoluteIJK[0]),
-        Math.round(pickingData.absoluteIJK[1]),
-        Math.round(pickingData.absoluteIJK[2]),
-      ];
-
-      // Are we outside our actual extent
-      if (
-        ijk[0] < extent[0] ||
-        ijk[0] > extent[1] ||
-        ijk[1] < extent[2] ||
-        ijk[1] > extent[3] ||
-        ijk[2] < extent[4] ||
-        ijk[2] > extent[5]
-      ) {
-        return null;
-      }
-
-      return {
-        t: pickingData.t,
-        ijk,
-      };
-    }
-    return null;
-  };
-
-  publicAPI.intersectWithLineForCellPicking = (p1, p2) => {
-    const pickingData = doPicking(p1, p2);
-    if (pickingData) {
-      const imageData = publicAPI.getInputData();
-      const extent = imageData.getExtent();
-      const absIJK = pickingData.absoluteIJK;
-
-      // Get closer integer ijk
-      // NB: cell picking means closest voxel, means flooring
-      const ijk = [
-        Math.floor(absIJK[0]),
-        Math.floor(absIJK[1]),
-        Math.floor(absIJK[2]),
-      ];
-
-      // Are we outside our actual extent
-      if (
-        ijk[0] < extent[0] ||
-        ijk[0] > extent[1] - 1 ||
-        ijk[1] < extent[2] ||
-        ijk[1] > extent[3] - 1 ||
-        ijk[2] < extent[4] ||
-        ijk[2] > extent[5] - 1
-      ) {
-        return null;
-      }
-
-      // Parametric coordinates within cell
-      const pCoords = [
-        absIJK[0] - ijk[0],
-        absIJK[1] - ijk[1],
-        absIJK[2] - ijk[2],
-      ];
-
-      return {
-        t: pickingData.t,
-        ijk,
-        pCoords,
-      };
-    }
-    return null;
-  };
+  publicAPI.getCurrentImage = () => publicAPI.getInputData();
 }
 
 // ----------------------------------------------------------------------------
@@ -439,14 +285,11 @@ function vtkImageMapper(publicAPI, model) {
 // ----------------------------------------------------------------------------
 
 const DEFAULT_VALUES = {
-  displayExtent: [0, 0, 0, 0, 0, 0],
-  customDisplayExtent: [0, 0, 0, 0],
-  useCustomExtents: false,
-  slice: 0,
   slicingMode: SlicingMode.NONE,
   closestIJKAxis: { ijkMode: SlicingMode.NONE, flip: false },
   renderToRectangle: false,
   sliceAtFocalPoint: false,
+  preferSizeOverAccuracy: false, // Whether to use halfFloat representation of float, when it is inaccurate
 };
 
 // ----------------------------------------------------------------------------
@@ -455,17 +298,15 @@ export function extend(publicAPI, model, initialValues = {}) {
   Object.assign(model, DEFAULT_VALUES, initialValues);
 
   // Build VTK API
-  vtkAbstractMapper.extend(publicAPI, model, initialValues);
+  vtkAbstractImageMapper.extend(publicAPI, model, initialValues);
 
   macro.get(publicAPI, model, ['slicingMode']);
   macro.setGet(publicAPI, model, [
-    'slice',
     'closestIJKAxis',
-    'useCustomExtents',
     'renderToRectangle',
     'sliceAtFocalPoint',
+    'preferSizeOverAccuracy',
   ]);
-  macro.setGetArray(publicAPI, model, ['customDisplayExtent'], 4);
 
   CoincidentTopologyHelper.implementCoincidentTopologyMethods(publicAPI, model);
 

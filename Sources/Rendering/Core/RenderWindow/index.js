@@ -1,6 +1,6 @@
 import macro from 'vtk.js/Sources/macros';
 
-const DEFAULT_VIEW_API = navigator.gpu ? 'WebGPU' : 'WebGL';
+const DEFAULT_VIEW_API = 'WebGL';
 const VIEW_CONSTRUCTORS = Object.create(null);
 
 // ----------------------------------------------------------------------------
@@ -63,17 +63,17 @@ function vtkRenderWindow(publicAPI, model) {
       return;
     }
     view.setRenderable(publicAPI);
-    model.views.push(view);
+    model._views.push(view);
     publicAPI.modified();
   };
 
   // Remove renderer
   publicAPI.removeView = (view) => {
-    model.views = model.views.filter((r) => r !== view);
+    model._views = model._views.filter((r) => r !== view);
     publicAPI.modified();
   };
 
-  publicAPI.hasView = (view) => model.views.indexOf(view) !== -1;
+  publicAPI.hasView = (view) => model._views.indexOf(view) !== -1;
 
   // handle any pre render initializations
   publicAPI.preRender = () => {
@@ -90,26 +90,34 @@ function vtkRenderWindow(publicAPI, model) {
     if (model.interactor) {
       model.interactor.render();
     } else {
-      model.views.forEach((view) => view.traverseAllPasses());
+      model._views.forEach((view) => view.traverseAllPasses());
     }
   };
 
   publicAPI.getStatistics = () => {
-    const results = { propCount: 0, invisiblePropCount: 0 };
+    const results = { propCount: 0, invisiblePropCount: 0, gpuMemoryMB: 0 };
+    model._views.forEach((v) => {
+      results.gpuMemoryMB += v.getGraphicsMemoryInfo() / 1e6;
+    });
     model.renderers.forEach((ren) => {
       const props = ren.getViewProps();
+      const gren = model._views[0].getViewNodeFor(ren);
       props.forEach((prop) => {
         if (prop.getVisibility()) {
           results.propCount += 1;
           const mpr = prop.getMapper && prop.getMapper();
           if (mpr && mpr.getPrimitiveCount) {
-            const pcount = mpr.getPrimitiveCount();
-            Object.keys(pcount).forEach((keyName) => {
-              if (!results[keyName]) {
-                results[keyName] = 0;
-              }
-              results[keyName] += pcount[keyName];
-            });
+            const gmpr = gren.getViewNodeFor(mpr);
+            if (gmpr) {
+              results.gpuMemoryMB += gmpr.getAllocatedGPUMemoryInBytes() / 1e6;
+              const pcount = mpr.getPrimitiveCount();
+              Object.keys(pcount).forEach((keyName) => {
+                if (!results[keyName]) {
+                  results[keyName] = 0;
+                }
+                results[keyName] += pcount[keyName];
+              });
+            }
           }
         } else {
           results.invisiblePropCount += 1;
@@ -125,7 +133,7 @@ function vtkRenderWindow(publicAPI, model) {
 
   publicAPI.captureImages = (format = 'image/png', opts = {}) => {
     macro.setImmediate(publicAPI.render);
-    return model.views
+    return model._views
       .map((view) =>
         view.captureNextImage ? view.captureNextImage(format, opts) : undefined
       )
@@ -157,11 +165,12 @@ export function extend(publicAPI, model, initialValues = {}) {
   macro.setGet(publicAPI, model, [
     'interactor',
     'numberOfLayers',
-    'views',
+    '_views',
     'defaultViewAPI',
   ]);
   macro.get(publicAPI, model, ['neverRendered']);
   macro.getArray(publicAPI, model, ['renderers']);
+  macro.moveToProtected(publicAPI, model, ['views']);
   macro.event(publicAPI, model, 'completion');
 
   // Object methods

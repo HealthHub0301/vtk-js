@@ -1,14 +1,11 @@
-import { radiansFromDegrees } from 'vtk.js/Sources/Common/Core/Math';
+import vtkMath from 'vtk.js/Sources/Common/Core/Math';
 import { FieldAssociations } from 'vtk.js/Sources/Common/DataModel/DataSet/Constants';
 import macro from 'vtk.js/Sources/macros';
-import vtkSelectionNode from 'vtk.js/Sources/Common/DataModel/SelectionNode';
 import Constants from 'vtk.js/Sources/Widgets/Core/WidgetManager/Constants';
-import vtkSVGRepresentation from 'vtk.js/Sources/Widgets/SVG/SVGRepresentation';
-import { diff } from './vdom';
+import { WIDGET_PRIORITY } from 'vtk.js/Sources/Widgets/Core/AbstractWidget/Constants';
 
 const { ViewTypes, RenderingTypes, CaptureOn } = Constants;
 const { vtkErrorMacro } = macro;
-const { createSvgElement, createSvgDomElement } = vtkSVGRepresentation;
 
 let viewIdCount = 1;
 
@@ -30,20 +27,26 @@ export function extractRenderingComponents(renderer) {
   };
 }
 
-// ----------------------------------------------------------------------------
+export function getPixelWorldHeightAtCoord(worldCoord, displayScaleParams) {
+  const {
+    dispHeightFactor,
+    cameraPosition,
+    cameraDir,
+    isParallel,
+    rendererPixelDims,
+  } = displayScaleParams;
+  let scale = 1;
+  if (isParallel) {
+    scale = dispHeightFactor;
+  } else {
+    const worldCoordToCamera = [...worldCoord];
+    vtkMath.subtract(worldCoordToCamera, cameraPosition, worldCoordToCamera);
+    scale = vtkMath.dot(worldCoordToCamera, cameraDir) * dispHeightFactor;
+  }
 
-function createSvgRoot(id) {
-  const svgRoot = createSvgDomElement('svg');
-  svgRoot.setAttribute(
-    'style',
-    'position: absolute; top: 0; left: 0; width: 100%; height: 100%;'
-  );
-  svgRoot.setAttribute('version', '1.1');
-  svgRoot.setAttribute('baseProfile', 'full');
-
-  return svgRoot;
+  const rHeight = rendererPixelDims[1];
+  return scale / rHeight;
 }
-
 // ----------------------------------------------------------------------------
 // vtkWidgetManager methods
 // ----------------------------------------------------------------------------
@@ -54,15 +57,7 @@ function vtkWidgetManager(publicAPI, model) {
   }
   model.classHierarchy.push('vtkWidgetManager');
   const propsWeakMap = new WeakMap();
-  const widgetToSvgMap = new WeakMap();
-  const svgVTrees = new WeakMap();
   const subscriptions = [];
-
-  // --------------------------------------------------------------------------
-  // Internal variable
-  // --------------------------------------------------------------------------
-
-  model.svgRoot = createSvgRoot(model.viewId);
 
   // --------------------------------------------------------------------------
   // API internal
@@ -91,136 +86,26 @@ function vtkWidgetManager(publicAPI, model) {
   }
 
   // --------------------------------------------------------------------------
-  // internal SVG API
-  // --------------------------------------------------------------------------
-
-  const pendingSvgRenders = new WeakMap();
-
-  function enableSvgLayer() {
-    const container = model.apiSpecificRenderWindow.getReferenceByName('el');
-    const canvas = model.apiSpecificRenderWindow.getCanvas();
-    container.insertBefore(model.svgRoot, canvas.nextSibling);
-    const containerStyles = window.getComputedStyle(container);
-    if (containerStyles.position === 'static') {
-      container.style.position = 'relative';
-    }
-  }
-
-  function disableSvgLayer() {
-    const container = model.apiSpecificRenderWindow.getReferenceByName('el');
-    container.removeChild(model.svgRoot);
-  }
-
-  function removeFromSvgLayer(viewWidget) {
-    const group = widgetToSvgMap.get(viewWidget);
-    if (group) {
-      widgetToSvgMap.delete(viewWidget);
-      svgVTrees.delete(viewWidget);
-      model.svgRoot.removeChild(group);
-    }
-  }
-
-  function setSvgSize() {
-    const [cwidth, cheight] = model.apiSpecificRenderWindow.getSize();
-    const ratio = window.devicePixelRatio || 1;
-    const bwidth = String(cwidth / ratio);
-    const bheight = String(cheight / ratio);
-    const viewBox = `0 0 ${cwidth} ${cheight}`;
-
-    const origWidth = model.svgRoot.getAttribute('width');
-    const origHeight = model.svgRoot.getAttribute('height');
-    const origViewBox = model.svgRoot.getAttribute('viewBox');
-
-    if (origWidth !== bwidth) {
-      model.svgRoot.setAttribute('width', bwidth);
-    }
-    if (origHeight !== bheight) {
-      model.svgRoot.setAttribute('height', bheight);
-    }
-    if (origViewBox !== viewBox) {
-      model.svgRoot.setAttribute('viewBox', viewBox);
-    }
-  }
-
-  function updateSvg() {
-    if (model.useSvgLayer) {
-      for (let i = 0; i < model.widgets.length; i++) {
-        const widget = model.widgets[i];
-        const svgReps = widget
-          .getRepresentations()
-          .filter((r) => r.isA('vtkSVGRepresentation'));
-
-        let pendingContent = [];
-        if (widget.getVisibility()) {
-          pendingContent = svgReps
-            .filter((r) => r.getVisibility())
-            .map((r) => r.render());
-        }
-
-        const promise = Promise.all(pendingContent);
-
-        const renders = pendingSvgRenders.get(widget) || [];
-        renders.push(promise);
-        pendingSvgRenders.set(widget, renders);
-
-        promise.then((vnodes) => {
-          let pendingRenders = pendingSvgRenders.get(widget) || [];
-          const idx = pendingRenders.indexOf(promise);
-          if (model.deleted || widget.isDeleted() || idx === -1) {
-            return;
-          }
-
-          // throw away previous renders
-          pendingRenders = pendingRenders.slice(idx + 1);
-          pendingSvgRenders.set(widget, pendingRenders);
-
-          const oldVTree = svgVTrees.get(widget);
-          const newVTree = createSvgElement('g');
-          for (let ni = 0; ni < vnodes.length; ni++) {
-            newVTree.appendChild(vnodes[ni]);
-          }
-
-          const widgetGroup = widgetToSvgMap.get(widget);
-          let node = widgetGroup;
-
-          const patchFns = diff(oldVTree, newVTree);
-          for (let j = 0; j < patchFns.length; j++) {
-            node = patchFns[j](node);
-          }
-
-          if (!widgetGroup && node) {
-            // add
-            model.svgRoot.appendChild(node);
-            widgetToSvgMap.set(widget, node);
-          } else if (widgetGroup && !node) {
-            // delete
-            widgetGroup.remove();
-            widgetToSvgMap.delete(widget);
-          }
-
-          svgVTrees.set(widget, newVTree);
-        });
-      }
-    }
-  }
-
-  // --------------------------------------------------------------------------
   // Widget scaling
   // --------------------------------------------------------------------------
 
   function updateDisplayScaleParams() {
-    const { apiSpecificRenderWindow, camera, renderer } = model;
-    if (renderer && apiSpecificRenderWindow && camera) {
-      const [rwW, rwH] = apiSpecificRenderWindow.getSize();
-      const [vxmin, vymin, vxmax, vymax] = renderer.getViewport();
-      const rendererPixelDims = [rwW * (vxmax - vxmin), rwH * (vymax - vymin)];
+    const { _apiSpecificRenderWindow, _camera, _renderer } = model;
+    if (_renderer && _apiSpecificRenderWindow && _camera) {
+      const [rwW, rwH] = _apiSpecificRenderWindow.getSize();
+      const [vxmin, vymin, vxmax, vymax] = _renderer.getViewport();
+      const pixelRatio = _apiSpecificRenderWindow.getComputedDevicePixelRatio();
+      const rendererPixelDims = [
+        (rwW * (vxmax - vxmin)) / pixelRatio,
+        (rwH * (vymax - vymin)) / pixelRatio,
+      ];
 
-      const cameraPosition = camera.getPosition();
-      const cameraDir = camera.getDirectionOfProjection();
-      const isParallel = camera.getParallelProjection();
+      const cameraPosition = _camera.getPosition();
+      const cameraDir = _camera.getDirectionOfProjection();
+      const isParallel = _camera.getParallelProjection();
       const dispHeightFactor = isParallel
-        ? 2 * camera.getParallelScale()
-        : 2 * Math.tan(radiansFromDegrees(camera.getViewAngle()) / 2);
+        ? 2 * _camera.getParallelScale()
+        : 2 * Math.tan(vtkMath.radiansFromDegrees(_camera.getViewAngle()) / 2);
 
       model.widgets.forEach((w) => {
         w.getNestedProps().forEach((r) => {
@@ -242,6 +127,69 @@ function vtkWidgetManager(publicAPI, model) {
   // API public
   // --------------------------------------------------------------------------
 
+  async function updateSelection(callData, fromTouchEvent, callID) {
+    const { position } = callData;
+    const { requestCount, selectedState, representation, widget } =
+      await publicAPI.getSelectedDataForXY(position.x, position.y);
+
+    if (requestCount || callID !== model._currentUpdateSelectionCallID) {
+      // requestCount > 0: Call activate only once
+      // callID check: drop old calls
+      return;
+    }
+
+    function activateHandle(w) {
+      if (fromTouchEvent) {
+        // release any previous left button interaction
+        model._interactor.invokeLeftButtonRelease(callData);
+      }
+      w.activateHandle({ selectedState, representation });
+      if (fromTouchEvent) {
+        // re-trigger the left button press to pick the now-active widget
+        model._interactor.invokeLeftButtonPress(callData);
+      }
+    }
+
+    // Default cursor behavior
+    model._apiSpecificRenderWindow.setCursor(widget ? 'pointer' : 'default');
+
+    model.activeWidget = null;
+    let wantRender = false;
+    if (model.widgetInFocus === widget && widget.hasFocus()) {
+      activateHandle(widget);
+      model.activeWidget = widget;
+      wantRender = true;
+    } else {
+      for (let i = 0; i < model.widgets.length; i++) {
+        const w = model.widgets[i];
+        if (w === widget && w.getNestedPickable()) {
+          activateHandle(w);
+          model.activeWidget = w;
+          wantRender = true;
+        } else {
+          wantRender ||= !!w.getActiveState();
+          w.deactivateAllHandles();
+        }
+      }
+    }
+
+    if (wantRender) {
+      model._interactor.render();
+    }
+  }
+
+  const handleEvent = async (callData, fromTouchEvent = false) => {
+    if (
+      !model.isAnimating &&
+      model.pickingEnabled &&
+      callData.pokedRenderer === model._renderer
+    ) {
+      const callID = Symbol('UpdateSelection');
+      model._currentUpdateSelectionCallID = callID;
+      await updateSelection(callData, fromTouchEvent, callID);
+    }
+  };
+
   function updateWidgetForRender(w) {
     w.updateRepresentationForRender(model.renderingType);
   }
@@ -256,26 +204,36 @@ function vtkWidgetManager(publicAPI, model) {
     model.widgets.forEach(updateWidgetForRender);
   }
 
-  function captureBuffers(x1, y1, x2, y2) {
+  async function captureBuffers(x1, y1, x2, y2) {
+    if (model._captureInProgress) {
+      await model._captureInProgress;
+      return;
+    }
     renderPickingBuffer();
 
-    model.selector.setArea(x1, y1, x2, y2);
-    model.selector.releasePixBuffers();
-
+    model._capturedBuffers = null;
+    model._captureInProgress = model._selector.getSourceDataAsync(
+      model._renderer,
+      x1,
+      y1,
+      x2,
+      y2
+    );
+    model._capturedBuffers = await model._captureInProgress;
+    model._captureInProgress = null;
     model.previousSelectedData = null;
-    return model.selector.captureBuffers();
+    renderFrontBuffer();
   }
 
   publicAPI.enablePicking = () => {
     model.pickingEnabled = true;
-    model.pickingAvailable = true;
     publicAPI.renderWidgets();
   };
 
   publicAPI.renderWidgets = () => {
     if (model.pickingEnabled && model.captureOn === CaptureOn.MOUSE_RELEASE) {
-      const [w, h] = model.apiSpecificRenderWindow.getSize();
-      model.pickingAvailable = captureBuffers(0, 0, w, h);
+      const [w, h] = model._apiSpecificRenderWindow.getSize();
+      captureBuffers(0, 0, w, h);
     }
 
     renderFrontBuffer();
@@ -284,92 +242,65 @@ function vtkWidgetManager(publicAPI, model) {
 
   publicAPI.disablePicking = () => {
     model.pickingEnabled = false;
-    model.pickingAvailable = false;
   };
 
   publicAPI.setRenderer = (renderer) => {
-    Object.assign(model, extractRenderingComponents(renderer));
+    const renderingComponents = extractRenderingComponents(renderer);
+    Object.assign(model, renderingComponents);
+    macro.moveToProtected({}, model, Object.keys(renderingComponents));
     while (subscriptions.length) {
       subscriptions.pop().unsubscribe();
     }
 
-    model.selector = model.apiSpecificRenderWindow.getSelector();
-    model.selector.setFieldAssociation(
+    model._selector = model._apiSpecificRenderWindow.createSelector();
+    model._selector.setFieldAssociation(
       FieldAssociations.FIELD_ASSOCIATION_POINTS
     );
-    model.selector.attach(model.apiSpecificRenderWindow, model.renderer);
-
-    subscriptions.push(model.interactor.onRenderEvent(updateSvg));
-
-    subscriptions.push(model.apiSpecificRenderWindow.onModified(setSvgSize));
-    setSvgSize();
 
     subscriptions.push(
-      model.apiSpecificRenderWindow.onModified(updateDisplayScaleParams)
+      model._apiSpecificRenderWindow.onWindowResizeEvent(
+        updateDisplayScaleParams
+      )
     );
-    subscriptions.push(model.camera.onModified(updateDisplayScaleParams));
+    subscriptions.push(model._camera.onModified(updateDisplayScaleParams));
     updateDisplayScaleParams();
 
     subscriptions.push(
-      model.interactor.onStartAnimation(() => {
+      model._interactor.onStartAnimation(() => {
         model.isAnimating = true;
       })
     );
     subscriptions.push(
-      model.interactor.onEndAnimation(() => {
+      model._interactor.onEndAnimation(() => {
         model.isAnimating = false;
         publicAPI.renderWidgets();
       })
     );
 
     subscriptions.push(
-      model.interactor.onMouseMove(({ position }) => {
-        if (model.isAnimating || !model.pickingAvailable) {
-          return;
-        }
-        publicAPI.updateSelectionFromXY(position.x, position.y);
-        const { requestCount, selectedState, representation, widget } =
-          publicAPI.getSelectedData();
-
-        if (requestCount) {
-          // Call activate only once
-          return;
-        }
-
-        // Default cursor behavior
-        model.apiSpecificRenderWindow.setCursor(widget ? 'pointer' : 'default');
-
-        if (model.widgetInFocus === widget && widget.hasFocus()) {
-          widget.activateHandle({ selectedState, representation });
-          // Ken FIXME
-          model.interactor.render();
-          model.interactor.render();
-        } else {
-          for (let i = 0; i < model.widgets.length; i++) {
-            const w = model.widgets[i];
-            if (w === widget && w.getNestedPickable()) {
-              w.activateHandle({ selectedState, representation });
-              model.activeWidget = w;
-            } else {
-              w.deactivateAllHandles();
-            }
-          }
-          // Ken FIXME
-          model.interactor.render();
-          model.interactor.render();
-        }
+      model._interactor.onMouseMove((eventData) => {
+        handleEvent(eventData);
+        return macro.VOID;
       })
+    );
+
+    // must be handled after widgets, hence the given priority.
+    subscriptions.push(
+      model._interactor.onLeftButtonPress((eventData) => {
+        const { deviceType } = eventData;
+        const touchEvent = deviceType === 'touch' || deviceType === 'pen';
+        // only try selection if the left button press is from touch.
+        if (touchEvent) {
+          handleEvent(eventData, touchEvent);
+        }
+        return macro.VOID;
+      }, WIDGET_PRIORITY / 2)
     );
 
     publicAPI.modified();
 
     if (model.pickingEnabled) {
-      // also sets pickingAvailable
       publicAPI.enablePicking();
-    }
-
-    if (model.useSvgLayer) {
-      enableSvgLayer();
     }
   };
 
@@ -379,25 +310,25 @@ function vtkWidgetManager(publicAPI, model) {
     updateDisplayScaleParams();
 
     // Register to renderer
-    model.renderer.addActor(viewWidget);
+    model._renderer.addActor(viewWidget);
   }
 
   publicAPI.addWidget = (widget, viewType, initialValues) => {
-    if (!model.renderer) {
+    if (!model._renderer) {
       vtkErrorMacro(
         'Widget manager MUST BE link to a view before registering widgets'
       );
       return null;
     }
-    const { viewId, renderer } = model;
+    const { viewId, _renderer } = model;
     const w = widget.getWidgetForView({
       viewId,
-      renderer,
+      renderer: _renderer,
       viewType: viewType || ViewTypes.DEFAULT,
       initialValues,
     });
 
-    if (model.widgets.indexOf(w) === -1) {
+    if (w != null && model.widgets.indexOf(w) === -1) {
       model.widgets.push(w);
       addWidgetInternal(w);
       publicAPI.modified();
@@ -407,13 +338,12 @@ function vtkWidgetManager(publicAPI, model) {
   };
 
   function removeWidgetInternal(viewWidget) {
-    model.renderer.removeActor(viewWidget);
-    removeFromSvgLayer(viewWidget);
+    model._renderer.removeActor(viewWidget);
     viewWidget.delete();
   }
 
   function onWidgetRemoved() {
-    model.renderer.getRenderWindow().getInteractor().render();
+    model._renderer.getRenderWindow().getInteractor().render();
     publicAPI.renderWidgets();
   }
 
@@ -440,46 +370,28 @@ function vtkWidgetManager(publicAPI, model) {
     }
   };
 
-  publicAPI.updateSelectionFromXY = (x, y) => {
+  publicAPI.getSelectedDataForXY = async (x, y) => {
+    model.selections = null;
     if (model.pickingEnabled) {
-      // First pick SVG representation
-      for (let i = 0; i < model.widgets.length; ++i) {
-        const widget = model.widgets[i];
-        const hoveredSVGReps = widget
-          .getRepresentations()
-          .filter((r) => r.isA('vtkSVGRepresentation') && r.getHover() != null);
-        if (hoveredSVGReps.length) {
-          const selection = vtkSelectionNode.newInstance();
-          selection.getProperties().compositeID = hoveredSVGReps[0].getHover();
-          selection.getProperties().widget = widget;
-          selection.getProperties().representation = hoveredSVGReps[0];
-          model.selections = [selection];
-          return;
+      // do we require a new capture?
+      if (!model._capturedBuffers || model.captureOn === CaptureOn.MOUSE_MOVE) {
+        await captureBuffers(x, y, x, y);
+      } else {
+        // or do we need a pixel that is outside the last capture?
+        const capturedRegion = model._capturedBuffers.area;
+        if (
+          x < capturedRegion[0] ||
+          x > capturedRegion[2] ||
+          y < capturedRegion[1] ||
+          y > capturedRegion[3]
+        ) {
+          await captureBuffers(x, y, x, y);
         }
       }
 
-      // Then pick regular representations.
-      let pickingAvailable = model.pickingAvailable;
-
-      if (model.captureOn === CaptureOn.MOUSE_MOVE) {
-        pickingAvailable = captureBuffers(x, y, x, y);
-        renderFrontBuffer();
-      }
-
-      if (pickingAvailable) {
-        model.selections = model.selector.generateSelection(x, y, x, y);
-      }
+      model.selections = model._capturedBuffers.generateSelection(x, y, x, y);
     }
-  };
-
-  publicAPI.updateSelectionFromMouseEvent = (event) => {
-    const { pageX, pageY } = event;
-    const { top, left, height } = model.apiSpecificRenderWindow
-      .getCanvas()
-      .getBoundingClientRect();
-    const x = pageX - left;
-    const y = height - (pageY - top);
-    publicAPI.updateSelectionFromXY(x, y);
+    return publicAPI.getSelectedData();
   };
 
   publicAPI.getSelectedData = () => {
@@ -489,8 +401,7 @@ function vtkWidgetManager(publicAPI, model) {
     }
     const { propID, compositeID, prop } = model.selections[0].getProperties();
     let { widget, representation } = model.selections[0].getProperties();
-    // prop is undefined for SVG representation, widget is undefined for handle
-    // representation.
+    // widget is undefined for handle representation.
     if (
       model.previousSelectedData &&
       model.previousSelectedData.prop === prop &&
@@ -537,25 +448,6 @@ function vtkWidgetManager(publicAPI, model) {
 
   publicAPI.releaseFocus = () => publicAPI.grabFocus(null);
 
-  publicAPI.setUseSvgLayer = (useSvgLayer) => {
-    if (useSvgLayer !== model.useSvgLayer) {
-      model.useSvgLayer = useSvgLayer;
-
-      if (model.renderer) {
-        if (useSvgLayer) {
-          enableSvgLayer();
-          // force a render so svg widgets can be drawn
-          updateSvg();
-        } else {
-          disableSvgLayer();
-        }
-      }
-
-      return true;
-    }
-    return false;
-  };
-
   const superDelete = publicAPI.delete;
   publicAPI.delete = () => {
     while (subscriptions.length) {
@@ -570,17 +462,19 @@ function vtkWidgetManager(publicAPI, model) {
 // ----------------------------------------------------------------------------
 
 const DEFAULT_VALUES = {
+  // _camera: null,
+  // _selector: null,
+  // _currentUpdateSelectionCallID: null,
   viewId: null,
   widgets: [],
+  activeWidget: null,
   renderer: null,
   viewType: ViewTypes.DEFAULT,
-  pickingAvailable: false,
   isAnimating: false,
   pickingEnabled: true,
   selections: null,
   previousSelectedData: null,
   widgetInFocus: null,
-  useSvgLayer: true,
   captureOn: CaptureOn.MOUSE_MOVE,
 };
 
@@ -599,7 +493,7 @@ export function extend(publicAPI, model, initialValues = {}) {
     'widgets',
     'viewId',
     'pickingEnabled',
-    'useSvgLayer',
+    'activeWidget',
   ]);
 
   // Object specific methods
@@ -612,4 +506,4 @@ export const newInstance = macro.newInstance(extend, 'vtkWidgetManager');
 
 // ----------------------------------------------------------------------------
 
-export default { newInstance, extend, Constants };
+export default { newInstance, extend, Constants, getPixelWorldHeightAtCoord };

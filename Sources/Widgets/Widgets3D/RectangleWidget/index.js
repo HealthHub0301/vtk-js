@@ -3,7 +3,6 @@ import vtkPlanePointManipulator from 'vtk.js/Sources/Widgets/Manipulators/PlaneM
 import vtkShapeWidget from 'vtk.js/Sources/Widgets/Widgets3D/ShapeWidget';
 import vtkSphereHandleRepresentation from 'vtk.js/Sources/Widgets/Representations/SphereHandleRepresentation';
 import vtkRectangleContextRepresentation from 'vtk.js/Sources/Widgets/Representations/RectangleContextRepresentation';
-import vtkSVGLandmarkRepresentation from 'vtk.js/Sources/Widgets/SVG/SVGLandmarkRepresentation';
 import widgetBehavior from 'vtk.js/Sources/Widgets/Widgets3D/RectangleWidget/behavior';
 import stateGenerator from 'vtk.js/Sources/Widgets/Widgets3D/RectangleWidget/state';
 
@@ -33,7 +32,6 @@ function vtkRectangleWidget(publicAPI, model) {
 
   // --- Widget Requirement ---------------------------------------------------
 
-  model.behavior = widgetBehavior;
   publicAPI.getRepresentationsForViewType = (viewType) => {
     switch (viewType) {
       case ViewTypes.DEFAULT:
@@ -45,21 +43,10 @@ function vtkRectangleWidget(publicAPI, model) {
           {
             builder: vtkSphereHandleRepresentation,
             labels: ['moveHandle'],
-            initialValues: {
-              scaleInPixels: true,
-            },
           },
           {
             builder: vtkRectangleContextRepresentation,
             labels: ['rectangleHandle'],
-          },
-          {
-            builder: vtkSVGLandmarkRepresentation,
-            initialValues: {
-              showCircle: false,
-              text: '',
-            },
-            labels: ['SVGtext'],
           },
         ];
     }
@@ -69,15 +56,17 @@ function vtkRectangleWidget(publicAPI, model) {
   // initialization
   // --------------------------------------------------------------------------
 
-  // Default manipulator
-  model.manipulator = vtkPlanePointManipulator.newInstance();
-  model.widgetState = stateGenerator();
+  model.manipulator = vtkPlanePointManipulator.newInstance({
+    useCameraNormal: true,
+  });
 }
 
 // ----------------------------------------------------------------------------
 
-function defaultValues(initalValues) {
+function defaultValues(initialValues) {
   return {
+    behavior: widgetBehavior,
+    widgetState: stateGenerator(),
     modifierBehavior: {
       None: {
         [BehaviorCategory.PLACEMENT]:
@@ -94,7 +83,7 @@ function defaultValues(initalValues) {
           ShapeBehavior[BehaviorCategory.POINTS].CENTER_TO_CORNER,
       },
     },
-    ...initalValues,
+    ...initialValues,
   };
 }
 
@@ -102,7 +91,7 @@ function defaultValues(initalValues) {
 
 export function extend(publicAPI, model, initialValues = {}) {
   vtkShapeWidget.extend(publicAPI, model, defaultValues(initialValues));
-  macro.setGet(publicAPI, model, ['manipulator', 'widgetState']);
+  macro.setGet(publicAPI, model, ['widgetState']);
 
   vtkRectangleWidget(publicAPI, model);
 }

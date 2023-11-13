@@ -76,6 +76,7 @@ function vtkOpenGLBufferObject(publicAPI, model) {
       data,
       model.context.STATIC_DRAW
     );
+    model.allocatedGPUMemoryInBytes = data.length * data.BYTES_PER_ELEMENT;
     dirty = false;
     return true;
   };
@@ -101,18 +102,19 @@ function vtkOpenGLBufferObject(publicAPI, model) {
       model.context.bindBuffer(convertType(internalType), null);
       model.context.deleteBuffer(internalHandle);
       internalHandle = null;
+      model.allocatedGPUMemoryInBytes = 0;
     }
   };
 
   publicAPI.setOpenGLRenderWindow = (rw) => {
-    if (model.openGLRenderWindow === rw) {
+    if (model._openGLRenderWindow === rw) {
       return;
     }
     publicAPI.releaseGraphicsResources();
-    model.openGLRenderWindow = rw;
+    model._openGLRenderWindow = rw;
     model.context = null;
     if (rw) {
-      model.context = model.openGLRenderWindow.getContext();
+      model.context = model._openGLRenderWindow.getContext();
     }
   };
 
@@ -125,8 +127,9 @@ function vtkOpenGLBufferObject(publicAPI, model) {
 
 const DEFAULT_VALUES = {
   objectType: ObjectType.ARRAY_BUFFER,
-  openGLRenderWindow: null,
+  // _openGLRenderWindow: null,
   context: null,
+  allocatedGPUMemoryInBytes: 0,
 };
 
 // ----------------------------------------------------------------------------
@@ -137,7 +140,11 @@ export function extend(publicAPI, model, initialValues = {}) {
   // Object methods
   macro.obj(publicAPI, model);
 
-  macro.get(publicAPI, model, ['openGLRenderWindow']);
+  macro.get(publicAPI, model, [
+    '_openGLRenderWindow',
+    'allocatedGPUMemoryInBytes',
+  ]);
+  macro.moveToProtected(publicAPI, model, ['openGLRenderWindow']);
 
   vtkOpenGLBufferObject(publicAPI, model);
 }

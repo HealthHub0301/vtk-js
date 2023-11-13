@@ -1,16 +1,9 @@
 import vtkCamera from "../Camera";
-import vtkAbstractMapper, { IAbstractMapperInitialValues } from "../AbstractMapper";
-import { Bounds, Vector3 } from "../../../types";
+import vtkAbstractImageMapper, { IAbstractImageMapperInitialValues } from "../AbstractImageMapper";
+import { Bounds, Nullable, Vector3 } from "../../../types";
+import { SlicingMode } from "./Constants";
+import vtkImageData from "../../../Common/DataModel/ImageData";
 
-export enum SlicingMode {
-	NONE,
-	I,
-	J,
-	K,
-	X,
-	Y,
-	Z,
-}
 
 interface IClosestIJKAxis {
 	ijkMode: SlicingMode,
@@ -22,17 +15,13 @@ interface ICoincidentTopology {
 	offset: number;
 }
 
-export interface IImageMapperInitialValues extends IAbstractMapperInitialValues {
-	displayExtent?: number[];
-	customDisplayExtent?: number[];
-	useCustomExtents?: boolean;
-	slice?: number;
+export interface IImageMapperInitialValues extends IAbstractImageMapperInitialValues {
 	closestIJKAxis?: IClosestIJKAxis;
 	renderToRectangle?: boolean;
 	sliceAtFocalPoint?: boolean;
 }
 
-export interface vtkImageMapper extends vtkAbstractMapper {
+export interface vtkImageMapper extends vtkAbstractImageMapper {
 
   /**
    * Returns the IJK slice value from a world position or XYZ slice value
@@ -54,11 +43,12 @@ export interface vtkImageMapper extends vtkAbstractMapper {
 
 	/**
 	 * Get the bounds for a given slice as [xmin, xmax, ymin, ymax,zmin, zmax].
-	 * @param {Number} [slice] The slice index.
-	 * @param {Number} [thickness] The slice thickness.
-	 * @return {Number[]} The bounds for a given slice.
+	 * @param {Number} [slice] The slice index. If undefined, the current slice is considered.
+	 * @param {Number} [halfThickness] Half the slice thickness in index space (unit voxel
+	 * spacing). If undefined, 0 is considered.
+	 * @return {Bounds} The bounds for a given slice.
 	 */
-	getBoundsForSlice(slice?: number, thickness?: number): number[];
+	getBoundsForSlice(slice?: number, halfThickness?: number): Bounds;
 
 	/**
 	 *
@@ -102,19 +92,15 @@ export interface vtkImageMapper extends vtkAbstractMapper {
 	getResolveCoincidentTopologyPolygonOffsetParameters(): ICoincidentTopology;
 
 	/**
-	 * Get the slice index.
+  	 * Return currently active image. By default, there can only be one image
+	 * for this mapper, if an input is set.
 	 */
-	getSlice(): number;
+	getCurrentImage(): Nullable<vtkImageData>;
 
 	/**
 	 * Get the slice number at a focal point.
 	 */
 	getSliceAtFocalPoint(): boolean;
-
-	/**
-	 *
-	 */
-	getUseCustomExtents(): boolean;
 
 	/**
 	 *
@@ -135,23 +121,6 @@ export interface vtkImageMapper extends vtkAbstractMapper {
 	 * @param {IClosestIJKAxis} closestIJKAxis The axis object.
 	 */
 	setClosestIJKAxis(closestIJKAxis: IClosestIJKAxis): boolean;
-
-	/**
-	 *
-	 * @param {Number} x1 The x coordinate of the first point.
-	 * @param {Number} x2 The x coordinate of the second point.
-	 * @param {Number} y1 The y coordinate of the first point.
-	 * @param {Number} y2 The y coordinate of the second point.
-	 * @param {Number} z1 The z coordinate of the first point.
-	 * @param {Number} z2 The z coordinate of the second point.
-	 */
-	setCustomDisplayExtent(x1: number, x2: number, y1: number, y2: number, z1: number, z2: number): boolean;
-
-	/**
-	 *
-	 * @param customDisplayExtent
-	 */
-	setCustomDisplayExtentFrom(customDisplayExtent: number[]): boolean;
 
 	/**
 	 *
@@ -206,7 +175,7 @@ export interface vtkImageMapper extends vtkAbstractMapper {
 	 * @param {Number} factor 
 	 * @param {Number} offset 
 	 */
-	setResolveCoincidentTopologyPolygonOffsetParameters(factor: number, offset: number)
+	setResolveCoincidentTopologyPolygonOffsetParameters(factor: number, offset: number): boolean;
 
 	/**
 	 *
@@ -245,13 +214,7 @@ export interface vtkImageMapper extends vtkAbstractMapper {
 	 * Set the slice from a given focal point. 
 	 * @param {Boolean} sliceAtFocalPoint
 	 */
-	sliceAtFocalPoint(sliceAtFocalPoint: boolean): boolean;
-
-	/**
-	 * 
-	 * @param {Boolean} useCustomExtents 
-	 */
-	setUseCustomExtents(useCustomExtents: boolean): boolean;
+	setSliceAtFocalPoint(sliceAtFocalPoint: boolean): boolean;
 
 	/**
 	 * Set the slice for the X axis. 
@@ -295,10 +258,26 @@ export interface vtkImageMapper extends vtkAbstractMapper {
 	getSlicingModeNormal(): number[];
 
 	/**
-	 * Set the slicing mode. 
-	 * @param {Number} mode The slicing mode.
+	 * Get the slicing mode. 
 	 */
-	setSlicingMode(mode: number): boolean;
+	getSlicingMode(): SlicingMode;
+
+	/**
+	 * Set the slicing mode. 
+	 * @param {SlicingMode} mode The slicing mode.
+	 */
+	setSlicingMode(mode: SlicingMode): boolean;
+
+	/**
+	 * Get the preference to use halfFloat representation of float
+	 */
+	getPreferSizeOverAccuracy(): boolean;
+
+	/**
+	 * Set the preference to use halfFloat representation of float
+	 * @param {Boolean} preferSizeOverAccuracy
+	 */
+	setPreferSizeOverAccuracy(preferSizeOverAccuracy: boolean): boolean;
 }
 
 /**
@@ -325,5 +304,6 @@ export function newInstance(initialValues?: IImageMapperInitialValues): vtkImage
 export declare const vtkImageMapper: {
 	newInstance: typeof newInstance;
 	extend: typeof extend;
+	SlicingMode: typeof SlicingMode;
 }
 export default vtkImageMapper;

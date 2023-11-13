@@ -28,15 +28,9 @@ function vtkImageData(publicAPI, model) {
       return false;
     }
 
-    let changeDetected = false;
-    model.extent.forEach((item, index) => {
-      if (item !== extentArray[index]) {
-        if (changeDetected) {
-          return;
-        }
-        changeDetected = true;
-      }
-    });
+    const changeDetected = model.extent.some(
+      (item, index) => item !== extentArray[index]
+    );
 
     if (changeDetected) {
       model.extent = extentArray.slice();
@@ -189,49 +183,14 @@ function vtkImageData(publicAPI, model) {
   // void ComputeBounds() VTK_OVERRIDE;
   // int GetMaxCellSize() VTK_OVERRIDE {return 8;}; //voxel is the largest
 
-  publicAPI.getBounds = () => publicAPI.extentToBounds(model.extent);
+  publicAPI.getBounds = () =>
+    publicAPI.extentToBounds(publicAPI.getSpatialExtent());
 
-  publicAPI.extentToBounds = (ex) => {
-    // prettier-ignore
-    const corners = [
-      ex[0], ex[2], ex[4],
-      ex[1], ex[2], ex[4],
-      ex[0], ex[3], ex[4],
-      ex[1], ex[3], ex[4],
-      ex[0], ex[2], ex[5],
-      ex[1], ex[2], ex[5],
-      ex[0], ex[3], ex[5],
-      ex[1], ex[3], ex[5]];
+  publicAPI.extentToBounds = (ex) =>
+    vtkBoundingBox.transformBounds(ex, model.indexToWorld);
 
-    const idx = new Float64Array([corners[0], corners[1], corners[2]]);
-    const vout = new Float64Array(3);
-    publicAPI.indexToWorld(idx, vout);
-    const bounds = [vout[0], vout[0], vout[1], vout[1], vout[2], vout[2]];
-    for (let i = 3; i < 24; i += 3) {
-      vec3.set(idx, corners[i], corners[i + 1], corners[i + 2]);
-      publicAPI.indexToWorld(idx, vout);
-      if (vout[0] < bounds[0]) {
-        bounds[0] = vout[0];
-      }
-      if (vout[1] < bounds[2]) {
-        bounds[2] = vout[1];
-      }
-      if (vout[2] < bounds[4]) {
-        bounds[4] = vout[2];
-      }
-      if (vout[0] > bounds[1]) {
-        bounds[1] = vout[0];
-      }
-      if (vout[1] > bounds[3]) {
-        bounds[3] = vout[1];
-      }
-      if (vout[2] > bounds[5]) {
-        bounds[5] = vout[2];
-      }
-    }
-
-    return bounds;
-  };
+  publicAPI.getSpatialExtent = () =>
+    vtkBoundingBox.inflate([...model.extent], 0.5);
 
   // Internal, shouldn't need to call this manually.
   publicAPI.computeTransforms = () => {
@@ -254,52 +213,6 @@ function vtkImageData(publicAPI, model) {
     mat4.invert(model.worldToIndex, model.indexToWorld);
   };
 
-  //
-  // The direction matrix is a 3x3 basis for the I, J, K axes
-  // of the image. The rows of the matrix correspond to the
-  // axes directions in world coordinates. Direction must
-  // form an orthonormal basis, results are undefined if
-  // it is not.
-  //
-  publicAPI.setDirection = (...args) => {
-    if (model.deleted) {
-      vtkErrorMacro('instance deleted - cannot call any method');
-      return false;
-    }
-
-    let array = args;
-    // allow an array passed as a single arg.
-    if (
-      array.length === 1 &&
-      (Array.isArray(array[0]) ||
-        array[0].constructor === Float32Array ||
-        array[0].constructor === Float64Array)
-    ) {
-      array = array[0];
-    }
-
-    if (array.length !== 9) {
-      throw new RangeError('Invalid number of values for array setter');
-    }
-    let changeDetected = false;
-    model.direction.forEach((item, index) => {
-      if (item !== array[index]) {
-        if (changeDetected) {
-          return;
-        }
-        changeDetected = true;
-      }
-    });
-
-    if (changeDetected) {
-      for (let i = 0; i < 9; ++i) {
-        model.direction[i] = array[i];
-      }
-      publicAPI.modified();
-    }
-    return true;
-  };
-
   publicAPI.indexToWorld = (ain, aout = []) => {
     vec3.transformMat4(aout, ain, model.indexToWorld);
     return aout;
@@ -312,46 +225,17 @@ function vtkImageData(publicAPI, model) {
   };
   publicAPI.worldToIndexVec3 = publicAPI.worldToIndex;
 
-  publicAPI.indexToWorldBounds = (bin, bout = []) => {
-    const in1 = [0, 0, 0];
-    const in2 = [0, 0, 0];
-    vtkBoundingBox.computeCornerPoints(bin, in1, in2);
+  publicAPI.indexToWorldBounds = (bin, bout = []) =>
+    vtkBoundingBox.transformBounds(bin, model.indexToWorld, bout);
 
-    const out1 = [0, 0, 0];
-    const out2 = [0, 0, 0];
-    vec3.transformMat4(out1, in1, model.indexToWorld);
-    vec3.transformMat4(out2, in2, model.indexToWorld);
-
-    return vtkMath.computeBoundsFromPoints(out1, out2, bout);
-  };
-
-  publicAPI.worldToIndexBounds = (bin, bout = []) => {
-    const in1 = [0, 0, 0];
-    const in2 = [0, 0, 0];
-    vtkBoundingBox.computeCornerPoints(bin, in1, in2);
-
-    const out1 = [0, 0, 0];
-    const out2 = [0, 0, 0];
-    vec3.transformMat4(out1, in1, model.worldToIndex);
-    vec3.transformMat4(out2, in2, model.worldToIndex);
-
-    return vtkMath.computeBoundsFromPoints(out1, out2, bout);
-  };
+  publicAPI.worldToIndexBounds = (bin, bout = []) =>
+    vtkBoundingBox.transformBounds(bin, model.worldToIndex, bout);
 
   // Make sure the transform is correct
   publicAPI.onModified(publicAPI.computeTransforms);
   publicAPI.computeTransforms();
 
-  publicAPI.getCenter = () => {
-    const bounds = publicAPI.getBounds();
-    const center = [];
-
-    for (let i = 0; i < 3; i++) {
-      center[i] = (bounds[2 * i + 1] + bounds[2 * i]) / 2;
-    }
-
-    return center;
-  };
+  publicAPI.getCenter = () => vtkBoundingBox.getCenter(publicAPI.getBounds());
 
   publicAPI.computeHistogram = (worldBounds, voxelFunc = null) => {
     const bounds = [0, 0, 0, 0, 0, 0];
@@ -543,8 +427,9 @@ export function extend(publicAPI, model, initialValues = {}) {
   model.worldToIndex = new Float64Array(16);
 
   // Set/Get methods
-  macro.get(publicAPI, model, ['direction', 'indexToWorld', 'worldToIndex']);
+  macro.get(publicAPI, model, ['indexToWorld', 'worldToIndex']);
   macro.setGetArray(publicAPI, model, ['origin', 'spacing'], 3);
+  macro.setGetArray(publicAPI, model, ['direction'], 9);
   macro.getArray(publicAPI, model, ['extent'], 6);
 
   // Object specific methods

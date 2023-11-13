@@ -7,9 +7,13 @@ import vtkPlane from 'vtk.js/Sources/Common/DataModel/Plane';
 import * as vtkMath from 'vtk.js/Sources/Common/Core/Math';
 import vtkMatrixBuilder from 'vtk.js/Sources/Common/Core/MatrixBuilder';
 
-import { ViewTypes } from 'vtk.js/Sources/Widgets/Core/WidgetManager/Constants';
+import {
+  planeNames,
+  planeNameToViewType,
+  viewTypeToPlaneName,
+} from 'vtk.js/Sources/Widgets/Widgets3D/ResliceCursorWidget/Constants';
 
-const EPSILON = 0.00001;
+const EPSILON = 10e-7;
 
 /**
  * Fit the plane defined by origin, p1, p2 onto the bounds.
@@ -18,6 +22,7 @@ const EPSILON = 0.00001;
  * @param {Array} origin
  * @param {Array} p1
  * @param {Array} p2
+ * @return {Boolean} false if no bounds have been found, else true
  */
 export function boundPlane(bounds, origin, p1, p2) {
   const v1 = [];
@@ -32,12 +37,35 @@ export function boundPlane(bounds, origin, p1, p2) {
   vtkMath.cross(v1, v2, n);
   vtkMath.normalize(n);
 
+  // Inflate bounds in order to avoid precision error when cutting cubesource
+  const inflatedBounds = [...bounds];
+  const eps = [...n];
+  vtkMath.multiplyScalar(eps, EPSILON);
+  vtkBoundingBox.addBounds(
+    inflatedBounds,
+    bounds[0] + eps[0],
+    bounds[1] + eps[0],
+    bounds[2] + eps[1],
+    bounds[3] + eps[1],
+    bounds[4] + eps[2],
+    bounds[5] + eps[2]
+  );
+  vtkBoundingBox.addBounds(
+    inflatedBounds,
+    bounds[0] - eps[0],
+    bounds[1] - eps[0],
+    bounds[2] - eps[1],
+    bounds[3] - eps[1],
+    bounds[4] - eps[2],
+    bounds[5] - eps[2]
+  );
+
   const plane = vtkPlane.newInstance();
   plane.setOrigin(...origin);
   plane.setNormal(...n);
 
   const cubeSource = vtkCubeSource.newInstance();
-  cubeSource.setBounds(bounds);
+  cubeSource.setBounds(inflatedBounds);
 
   const cutter = vtkCutter.newInstance();
   cutter.setCutFunction(plane);
@@ -45,7 +73,7 @@ export function boundPlane(bounds, origin, p1, p2) {
 
   const cutBounds = cutter.getOutputData();
   if (cutBounds.getNumberOfPoints() === 0) {
-    return;
+    return false;
   }
   const localBounds = STATIC.computeLocalBounds(
     cutBounds.getPoints(),
@@ -61,6 +89,7 @@ export function boundPlane(bounds, origin, p1, p2) {
     p2[i] =
       localBounds[0] * v1[i] + localBounds[3] * v2[i] + localBounds[4] * n[i];
   }
+  return true;
 }
 // Project point (inPoint) to the bounds of the image according to a plane
 // defined by two vectors (v1, v2)
@@ -131,78 +160,175 @@ export function rotateVector(vectorToBeRotated, axis, angle) {
   return rotatedVector;
 }
 
-// Update the extremities and the rotation point coordinate of the line
-function updateLine(lineState, center, axis, lineLength) {
-  const p1 = [
-    center[0] - lineLength * axis[0],
-    center[1] - lineLength * axis[1],
-    center[2] - lineLength * axis[2],
-  ];
-  const p2 = [
-    center[0] + lineLength * axis[0],
-    center[1] + lineLength * axis[1],
-    center[2] + lineLength * axis[2],
-  ];
-  // FIXME: p1 and p2 should be placed on the boundaries of the volume.
-  lineState.setPoint1(p1);
-  lineState.setPoint2(p2);
+/**
+ * Return ['X', 'Y'] if there are only 2 planes defined in the widget state.
+ * Return ['X', 'Y', 'Z'] if there are 3 planes defined in the widget state.
+ * @param {object} widgetState the state of the widget
+ * @returns An array of plane names
+ */
+export function getPlaneNames(widgetState) {
+  return Object.keys(widgetState.getPlanes()).map(
+    (viewType) => viewTypeToPlaneName[viewType]
+  );
+}
+
+/**
+ * Return X if lineName == XinY|XinZ, Y if lineName == YinX|YinZ and Z otherwise
+ * @param {string} lineName name of the line (YinX, ZinX, XinY, ZinY, XinZ, YinZ)
+ */
+export function getLinePlaneName(lineName) {
+  return lineName[0];
+}
+/**
+ * Return X if lineName == YinX|ZinX, Y if lineName == XinY|ZinY and Z otherwise
+ * @param {string} lineName name of the line (YinX, ZinX, XinY, ZinY, XinZ, YinZ)
+ */
+export function getLineInPlaneName(lineName) {
+  return lineName[3];
+}
+
+/**
+ * Returns ['XinY', 'YinX'] if planes == ['X', 'Y']
+ * ['XinY', 'XinZ', 'YinX', 'YinZ', 'ZinX', 'ZinY'] if planes == ['X', 'Y', 'Z']
+ * @param {string} planes name of the planes (e.g. ['X', 'Y'])
+ */
+export function getPlanesLineNames(planes = planeNames) {
+  const lines = [];
+  planes.forEach((plane) => {
+    planes.forEach((inPlane) => {
+      if (plane !== inPlane) {
+        lines.push(`${plane}in${inPlane}`);
+      }
+    });
+  });
+  return lines;
+}
+
+export function getLineNames(widgetState) {
+  const planes = Object.keys(widgetState.getPlanes()).map(
+    (viewType) => viewTypeToPlaneName[viewType]
+  );
+  return getPlanesLineNames(planes);
+}
+
+/**
+ * Return ZinX if lineName == YinX, YinX if lineName == ZinX, ZinY if lineName == XinY...
+ * @param {string} lineName name of the line (YinX, ZinX, XinY, ZinY, XinZ, YinZ)
+ */
+export function getOtherLineName(widgetState, lineName) {
+  const linePlaneName = getLinePlaneName(lineName);
+  const lineInPlaneName = getLineInPlaneName(lineName);
+  const otherLineName = getPlaneNames(widgetState).find(
+    (planeName) => planeName !== linePlaneName && planeName !== lineInPlaneName
+  );
+  return `${otherLineName}in${lineInPlaneName}`;
+}
+
+// Compute the offset of the rotation handle origin
+function computeRotationHandleOriginOffset(
+  axis,
+  rotationHandlePosition,
+  volumeDiagonalLength,
+  scaleInPixels
+) {
+  // FIXME: p1 and p2 could be placed on the exact boundaries of the volume.
+  return vtkMath.multiplyScalar(
+    [...axis],
+    (rotationHandlePosition * (scaleInPixels ? 1 : volumeDiagonalLength)) / 2
+  );
 }
 
 // Update the reslice cursor state according to the three planes normals and the origin
-export function updateState(widgetState) {
-  // Compute line axis
-  const xNormal = widgetState.getPlanes()[ViewTypes.YZ_PLANE].normal;
-  const yNormal = widgetState.getPlanes()[ViewTypes.XZ_PLANE].normal;
-  const zNormal = widgetState.getPlanes()[ViewTypes.XY_PLANE].normal;
-
-  const yzIntersectionLineAxis = vtkMath.cross(yNormal, zNormal, []);
-  const xzIntersectionLineAxis = vtkMath.cross(zNormal, xNormal, []);
-  const xyIntersectionLineAxis = vtkMath.cross(xNormal, yNormal, []);
+export function updateState(
+  widgetState,
+  scaleInPixels,
+  rotationHandlePosition
+) {
+  const planes = Object.keys(widgetState.getPlanes()).map(
+    (viewType) => viewTypeToPlaneName[viewType]
+  );
+  // Generates an object as such:
+  // axes = {'XY': cross(X, Y), 'YX': cross(X, Y), 'YZ': cross(Y, Z)...}
+  const axes = planes.reduce((res, plane) => {
+    planes
+      .filter((otherPlane) => plane !== otherPlane)
+      .forEach((otherPlane) => {
+        const cross = vtkMath.cross(
+          widgetState.getPlanes()[planeNameToViewType[plane]].normal,
+          widgetState.getPlanes()[planeNameToViewType[otherPlane]].normal,
+          []
+        );
+        res[`${plane}${otherPlane}`] = cross;
+        res[`${otherPlane}${plane}`] = cross;
+      });
+    return res;
+  }, {});
 
   const bounds = widgetState.getImage().getBounds();
   const center = widgetState.getCenter();
 
   // Length of the principal diagonal.
-  const pdLength = 0.5 * vtkBoundingBox.getDiagonalLength(bounds);
+  const pdLength = vtkBoundingBox.getDiagonalLength(bounds);
 
-  updateLine(
-    widgetState.getAxisXinY(),
-    center,
-    xyIntersectionLineAxis,
-    pdLength
-  );
-  updateLine(
-    widgetState.getAxisYinX(),
-    center,
-    xyIntersectionLineAxis,
-    pdLength
-  );
+  widgetState.getCenterHandle().setOrigin(center);
 
-  updateLine(
-    widgetState.getAxisYinZ(),
-    center,
-    yzIntersectionLineAxis,
-    pdLength
-  );
-  updateLine(
-    widgetState.getAxisZinY(),
-    center,
-    yzIntersectionLineAxis,
-    pdLength
-  );
-
-  updateLine(
-    widgetState.getAxisXinZ(),
-    center,
-    xzIntersectionLineAxis,
-    pdLength
-  );
-  updateLine(
-    widgetState.getAxisZinX(),
-    center,
-    xzIntersectionLineAxis,
-    pdLength
-  );
+  getPlanesLineNames(planes).forEach((lineName) => {
+    const planeName = getLinePlaneName(lineName);
+    const inPlaneName = getLineInPlaneName(lineName);
+    const direction = axes[`${planeName}${inPlaneName}`];
+    widgetState[`getRotationHandle${lineName}0`]().setOrigin(center);
+    widgetState[`getRotationHandle${lineName}0`]()
+      .getManipulator()
+      ?.setHandleOrigin(center);
+    widgetState[`getRotationHandle${lineName}0`]()
+      .getManipulator()
+      ?.setHandleNormal(
+        widgetState.getPlanes()[planeNameToViewType[planeName]].normal
+      );
+    widgetState[`getRotationHandle${lineName}0`]().setOffset(
+      computeRotationHandleOriginOffset(
+        direction,
+        rotationHandlePosition,
+        pdLength,
+        scaleInPixels
+      )
+    );
+    widgetState[`getRotationHandle${lineName}1`]().setOrigin(center);
+    widgetState[`getRotationHandle${lineName}1`]()
+      .getManipulator()
+      ?.setHandleOrigin(center);
+    widgetState[`getRotationHandle${lineName}1`]()
+      .getManipulator()
+      ?.setHandleNormal(
+        widgetState.getPlanes()[planeNameToViewType[planeName]].normal
+      );
+    widgetState[`getRotationHandle${lineName}1`]().setOffset(
+      computeRotationHandleOriginOffset(
+        direction,
+        -rotationHandlePosition,
+        pdLength,
+        scaleInPixels
+      )
+    );
+    const lineHandle = widgetState[`getAxis${lineName}`]();
+    lineHandle.setOrigin(center);
+    lineHandle.getManipulator()?.setHandleOrigin(center);
+    lineHandle
+      .getManipulator()
+      ?.setHandleNormal(
+        widgetState.getPlanes()[planeNameToViewType[planeName]].normal
+      );
+    const scale = vtkMath.normalize(direction);
+    const scale3 = lineHandle.getScale3();
+    scale3[2] = 2 * scale;
+    lineHandle.setScale3(scale3);
+    const right =
+      widgetState.getPlanes()[planeNameToViewType[inPlaneName]].normal;
+    const up = vtkMath.cross(direction, right, []);
+    lineHandle.setRight(right);
+    lineHandle.setUp(up);
+    lineHandle.setDirection(direction);
+  });
 }
 
 /**
@@ -234,68 +360,4 @@ export function transformPlane(
   );
   planeToTransform.rotate(angle, targetNormal);
   planeToTransform.setCenter(targetCenter);
-}
-
-// Get name of the line in the same plane as the input
-export function getAssociatedLinesName(lineName) {
-  switch (lineName) {
-    case 'AxisXinY':
-      return 'AxisZinY';
-    case 'AxisXinZ':
-      return 'AxisYinZ';
-    case 'AxisYinX':
-      return 'AxisZinX';
-    case 'AxisYinZ':
-      return 'AxisXinZ';
-    case 'AxisZinX':
-      return 'AxisYinX';
-    case 'AxisZinY':
-      return 'AxisXinY';
-    default:
-      return '';
-  }
-}
-
-/**
- * Get the line name, constructs from the plane name and where the plane is displayed
- * Example: planeName='X' rotatedPlaneName='Y', then the return values will be 'AxisXinY'
- * @param {String} planeName Value between 'X', 'Y' and 'Z'
- * @param {String} rotatedPlaneName Value between 'X', 'Y' and 'Z'
- * @returns {String}
- */
-export function getLineNameFromPlaneAndRotatedPlaneName(
-  planeName,
-  rotatedPlaneName
-) {
-  return `Axis${planeName}in${rotatedPlaneName}`;
-}
-
-/**
- * Extract the plane name from the line name
- * Example: 'AxisXinY' will return 'X'
- * @param {String} lineName Should be following this template : 'Axis_in_' with _ a character
- * @returns {String} Value between 'X', 'Y' and 'Z' or null if an error occured
- */
-export function getPlaneNameFromLineName(lineName) {
-  const match = lineName.match('([XYZ])in[XYZ]');
-  if (match) {
-    return match[1];
-  }
-  return null;
-}
-
-/**
- * Get the orthogonal plane name of 'planeName' in a specific 'rotatedPlaneName'
- * Example: planeName='X' on rotatedPlaneName='Z', then the associated plane name
- * of 'X' plane is 'Y'
- * @param {String} planeName
- * @param {String} rotatedPlaneName
- */
-export function getAssociatedPlaneName(planeName, rotatedPlaneName) {
-  const lineName = getLineNameFromPlaneAndRotatedPlaneName(
-    planeName,
-    rotatedPlaneName
-  );
-  const associatedLine = getAssociatedLinesName(lineName);
-  return getPlaneNameFromLineName(associatedLine);
 }

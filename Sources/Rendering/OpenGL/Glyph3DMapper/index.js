@@ -52,7 +52,7 @@ function vtkOpenGLGlyph3DMapper(publicAPI, model) {
 
     // apply faceCulling
     const gl = model.context;
-    if (model.openGLRenderWindow.getWebgl2()) {
+    if (model._openGLRenderWindow.getWebgl2()) {
       model.hardwareSupport = true;
       model.extension = null;
     } else if (!model.extension) {
@@ -66,12 +66,12 @@ function vtkOpenGLGlyph3DMapper(publicAPI, model) {
     const backfaceCulling = actor.getProperty().getBackfaceCulling();
     const frontfaceCulling = actor.getProperty().getFrontfaceCulling();
     if (!backfaceCulling && !frontfaceCulling) {
-      model.openGLRenderWindow.disableCullFace();
+      model._openGLRenderWindow.disableCullFace();
     } else if (frontfaceCulling) {
-      model.openGLRenderWindow.enableCullFace();
+      model._openGLRenderWindow.enableCullFace();
       gl.cullFace(gl.FRONT);
     } else {
-      model.openGLRenderWindow.enableCullFace();
+      model._openGLRenderWindow.enableCullFace();
       gl.cullFace(gl.BACK);
     }
 
@@ -443,9 +443,9 @@ function vtkOpenGLGlyph3DMapper(publicAPI, model) {
     const numPts = garray.length / 16;
 
     let compositePass = false;
-    if (model.openGLRenderer.getSelector()) {
+    if (model._openGLRenderer.getSelector()) {
       if (
-        model.openGLRenderer.getSelector().getCurrentPass() ===
+        model._openGLRenderer.getSelector().getCurrentPass() ===
         PassTypes.COMPOSITE_INDEX_PASS
       ) {
         compositePass = true;
@@ -462,10 +462,11 @@ function vtkOpenGLGlyph3DMapper(publicAPI, model) {
           drawSurfaceWithEdges &&
           (i === model.primTypes.TrisEdges ||
             i === model.primTypes.TriStripsEdges);
-        publicAPI.updateShaders(model.primitives[i], ren, actor);
+        model.lastBoundBO = model.primitives[i];
+        model.primitives[i].updateShaders(ren, actor, publicAPI);
         const program = model.primitives[i].getProgram();
 
-        const mode = publicAPI.getOpenGLMode(representation, i);
+        const mode = model.primitives[i].getOpenGLMode(representation);
         const normalMatrixUsed = program.isUniformUsed('normalMatrix');
         const mcvcMatrixUsed = program.isUniformUsed('MCVCMatrix');
 
@@ -484,7 +485,7 @@ function vtkOpenGLGlyph3DMapper(publicAPI, model) {
           // draw the array multiple times with different cam matrix
           for (let p = 0; p < numPts; ++p) {
             if (compositePass) {
-              model.openGLRenderer.getSelector().renderCompositeIndex(p);
+              model._openGLRenderer.getSelector().renderCompositeIndex(p);
             }
             publicAPI.updateGlyphShaderParameters(
               normalMatrixUsed,
@@ -494,7 +495,7 @@ function vtkOpenGLGlyph3DMapper(publicAPI, model) {
               garray,
               narray,
               p,
-              compositePass ? model.openGLRenderer.getSelector() : null
+              compositePass ? model._openGLRenderer.getSelector() : null
             );
             gl.drawArrays(mode, 0, cabo.getElementCount());
           }
@@ -617,6 +618,17 @@ function vtkOpenGLGlyph3DMapper(publicAPI, model) {
     return superClass.getNeedToRebuildBufferObjects(ren, actor);
   };
 
+  publicAPI.getNeedToRebuildShaders = (cellBO, ren, actor) => {
+    if (
+      superClass.getNeedToRebuildShaders(cellBO, ren, actor) ||
+      cellBO.getShaderSourceTime().getMTime() < model.renderable.getMTime() ||
+      cellBO.getShaderSourceTime().getMTime() < model.currentInput.getMTime()
+    ) {
+      return true;
+    }
+    return false;
+  };
+
   publicAPI.buildBufferObjects = (ren, actor) => {
     if (model.hardwareSupport) {
       // update the buffer objects if needed
@@ -625,13 +637,13 @@ function vtkOpenGLGlyph3DMapper(publicAPI, model) {
       const carray = model.renderable.getColorArray();
       if (!model.matrixBuffer) {
         model.matrixBuffer = vtkBufferObject.newInstance();
-        model.matrixBuffer.setOpenGLRenderWindow(model.openGLRenderWindow);
+        model.matrixBuffer.setOpenGLRenderWindow(model._openGLRenderWindow);
         model.normalBuffer = vtkBufferObject.newInstance();
-        model.normalBuffer.setOpenGLRenderWindow(model.openGLRenderWindow);
+        model.normalBuffer.setOpenGLRenderWindow(model._openGLRenderWindow);
         model.colorBuffer = vtkBufferObject.newInstance();
-        model.colorBuffer.setOpenGLRenderWindow(model.openGLRenderWindow);
+        model.colorBuffer.setOpenGLRenderWindow(model._openGLRenderWindow);
         model.pickBuffer = vtkBufferObject.newInstance();
-        model.pickBuffer.setOpenGLRenderWindow(model.openGLRenderWindow);
+        model.pickBuffer.setOpenGLRenderWindow(model._openGLRenderWindow);
       }
       if (
         model.renderable.getBuildTime().getMTime() >

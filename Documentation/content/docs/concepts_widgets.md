@@ -113,7 +113,7 @@ In order to scale a representation such that it retains the same size in
 display space, a widget representation should use the `scaleInPixels` property
 and the `getPixelWorldHeightAtCoord(coord)` method. When `scaleInPixels` is set
 to true, a widget representation should multiply whatever scaling they perform
-by the output of `getDisplayScaleAtCoord(coord)`.
+by the output of `getPixelWorldHeightAtCoord(coord)`.
 
 Look at the `SphereHandleRepresentation` as an example for how
 `getPixelWorldHeightAtCoord` is used.
@@ -134,7 +134,8 @@ associated representations for the particular view.
 
 Manipulators are objects that implement a single method, `handleEvent(callData,
 glRenderWindow)`. This method takes a mouse event (in `callData`) and
-transforms it into a 3D coordinate position. This is different from
+transforms it into a 3D coordinate position, returning an object containing at
+least a `worldCoords` and eventually other values. This is different from
 interactivity manipulators in that interactivity manipulators change how the
 scene is viewed via manipulating the camera, whereas widget manipulators
 transform mouse input into meaningful world coordinates, e.g. snapping
@@ -143,5 +144,17 @@ positions to a line.
 An example manipulator would be a plane manipulator. When instantiated with a
 plane point and normal, the plane manipulator will project mouse events onto the
 plane in 3D and return that projected point.
+
+## SVG Representation Support
+
+vtk.js no longer supports SVG-based widget representations, as managing the SVG
+rendering mechanisms are better left to a separate library. All of the examples
+that used SVG representations have been rewritten to use a rendering shim based
+on snabbdom, located in `Examples/Utilities/SVGHelpers.js`.
+
+If you are looking for a reasonably easy drop-in for rendering SVG
+representations, check out the above `SVGHelpers.js`, which requires `snabbdom`
+to be installed. An example usage can be found in the `vtkPolyLineWidget`
+example.
 
 [WidgetsDiagram]: ./gallery/widgets_diagram.png

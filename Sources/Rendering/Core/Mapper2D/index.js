@@ -133,9 +133,30 @@ function vtkMapper2D(publicAPI, model) {
     if (lut) {
       // Ensure that the lookup table is built
       lut.build();
-      model.colorMapColors = lut.mapScalars(scalars, model.colorMode, -1);
+      model.colorMapColors = lut.mapScalars(
+        scalars,
+        model.colorMode,
+        model.fieldDataTupleId
+      );
     }
     model.colorBuildString = `${publicAPI.getMTime()}${scalars.getMTime()}${alpha}`;
+  };
+
+  publicAPI.getPrimitiveCount = () => {
+    const input = publicAPI.getInputData();
+    const pcount = {
+      points: input.getPoints().getNumberOfValues() / 3,
+      verts:
+        input.getVerts().getNumberOfValues() -
+        input.getVerts().getNumberOfCells(),
+      lines:
+        input.getLines().getNumberOfValues() -
+        2 * input.getLines().getNumberOfCells(),
+      triangles:
+        input.getPolys().getNumberOfValues() -
+        3 * input.getPolys().getNumberOfCells(),
+    };
+    return pcount;
   };
 }
 

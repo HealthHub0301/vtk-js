@@ -1,20 +1,19 @@
-import 'vtk.js/Sources/favicon';
+import '@kitware/vtk.js/favicon';
 
 // Load the rendering pieces we want to use (for both WebGL and WebGPU)
-import 'vtk.js/Sources/Rendering/Profiles/Geometry';
+import '@kitware/vtk.js/Rendering/Profiles/Geometry';
+import '@kitware/vtk.js/Rendering/Misc/RenderingAPIs';
 
-import vtkActor from 'vtk.js/Sources/Rendering/Core/Actor';
-import vtkConeSource from 'vtk.js/Sources/Filters/Sources/ConeSource';
-import vtkSphereSource from 'vtk.js/Sources/Filters/Sources/SphereSource';
-import vtkCubeSource from 'vtk.js/Sources/Filters/Sources/CubeSource';
-import vtkCylinderSource from 'vtk.js/Sources/Filters/Sources/CylinderSource';
-import vtkMapper from 'vtk.js/Sources/Rendering/Core/Mapper';
-import vtkRenderWindow from 'vtk.js/Sources/Rendering/Core/RenderWindow';
-import vtkRenderWindowInteractor from 'vtk.js/Sources/Rendering/Core/RenderWindowInteractor';
-import vtkRenderer from 'vtk.js/Sources/Rendering/Core/Renderer';
-import vtkInteractorStyleTrackballCamera from 'vtk.js/Sources/Interaction/Style/InteractorStyleTrackballCamera';
-
-import vtkOpenGLRenderWindow from 'vtk.js/Sources/Rendering/OpenGL/RenderWindow';
+import vtkActor from '@kitware/vtk.js/Rendering/Core/Actor';
+import vtkConeSource from '@kitware/vtk.js/Filters/Sources/ConeSource';
+import vtkSphereSource from '@kitware/vtk.js/Filters/Sources/SphereSource';
+import vtkCubeSource from '@kitware/vtk.js/Filters/Sources/CubeSource';
+import vtkCylinderSource from '@kitware/vtk.js/Filters/Sources/CylinderSource';
+import vtkMapper from '@kitware/vtk.js/Rendering/Core/Mapper';
+import vtkRenderWindow from '@kitware/vtk.js/Rendering/Core/RenderWindow';
+import vtkRenderWindowInteractor from '@kitware/vtk.js/Rendering/Core/RenderWindowInteractor';
+import vtkRenderer from '@kitware/vtk.js/Rendering/Core/Renderer';
+import vtkInteractorStyleTrackballCamera from '@kitware/vtk.js/Interaction/Style/InteractorStyleTrackballCamera';
 
 // ----------------------------------------------------------------------------
 // Meshes
@@ -85,8 +84,8 @@ const colors = [
 const RENDERERS = {};
 
 const renderWindow = vtkRenderWindow.newInstance();
-const openglRenderWindow = vtkOpenGLRenderWindow.newInstance();
-renderWindow.addView(openglRenderWindow);
+const renderWindowView = renderWindow.newAPISpecificView();
+renderWindow.addView(renderWindowView);
 
 const rootContainer = document.createElement('div');
 rootContainer.style.position = 'fixed';
@@ -96,12 +95,11 @@ rootContainer.style.top = 0;
 rootContainer.style.pointerEvents = 'none';
 document.body.appendChild(rootContainer);
 
-openglRenderWindow.setContainer(rootContainer);
+renderWindowView.setContainer(rootContainer);
 
 const interactor = vtkRenderWindowInteractor.newInstance();
-interactor.setView(openglRenderWindow);
+interactor.setView(renderWindowView);
 interactor.initialize();
-interactor.bindEvents(document.body);
 interactor.setInteractorStyle(vtkInteractorStyleTrackballCamera.newInstance());
 
 function updateViewPort(element, renderer) {
@@ -129,12 +127,11 @@ function recomputeViewports() {
 
 function resize() {
   rootContainer.style.width = `${window.innerWidth}px`;
-  openglRenderWindow.setSize(window.innerWidth, window.innerHeight);
+  renderWindowView.setSize(window.innerWidth, window.innerHeight);
   recomputeViewports();
-  // Object.values(RENDERERS).forEach((r) => r.resetCamera());
 }
 
-window.addEventListener('resize', resize);
+new ResizeObserver(resize).observe(document.body);
 document.addEventListener('scroll', recomputeViewports);
 
 // ----------------------------------------------------------------------------
@@ -155,15 +152,36 @@ function applyStyle(element) {
   element.style.display = 'inline-block';
   element.style.boxSizing = 'border';
   element.style.textAlign = 'center';
+  element.style.color = 'white';
   return element;
 }
 
-function enterCurrentRenderer(e) {
-  interactor.setCurrentRenderer(RENDERERS[e.target.id]);
+let captureCurrentRenderer = false;
+
+function setCaptureCurrentRenderer(yn) {
+  captureCurrentRenderer = yn;
+  if (yn && interactor.getCurrentRenderer()) {
+    // fix the current renderer to, well, the current renderer
+    interactor.setCurrentRenderer(interactor.getCurrentRenderer());
+  } else {
+    // remove the fixed current renderer
+    interactor.setCurrentRenderer(null);
+  }
 }
 
-function exitCurrentRenderer(e) {
-  interactor.setCurrentRenderer(null);
+function bindInteractor(renderer, el) {
+  // only change the interactor's container if needed
+  if (interactor.getContainer() !== el) {
+    if (interactor.getContainer()) {
+      interactor.unbindEvents();
+    }
+    if (captureCurrentRenderer) {
+      interactor.setCurrentRenderer(renderer);
+    }
+    if (el) {
+      interactor.bindEvents(el);
+    }
+  }
 }
 
 function addRenderer() {
@@ -188,8 +206,10 @@ function addRenderer() {
   const renderer = vtkRenderer.newInstance({ background });
   container.innerHTML = `${mesh.name} ${prop.name}`;
 
-  container.addEventListener('mouseenter', enterCurrentRenderer);
-  container.addEventListener('mouseleave', exitCurrentRenderer);
+  container.addEventListener('pointerenter', () =>
+    bindInteractor(renderer, container)
+  );
+  container.addEventListener('pointerleave', () => bindInteractor(null, null));
 
   renderer.addActor(actor);
   renderWindow.addRenderer(renderer);
@@ -204,6 +224,21 @@ function addRenderer() {
 // Fill up page
 // ----------------------------------------------------------------------------
 
+const checkbox = document.createElement('input');
+checkbox.type = 'checkbox';
+checkbox.name = 'singleRendererCapture';
+const label = document.createElement('label');
+label.for = checkbox.name;
+label.innerText = 'Enable single renderer capture';
+
+checkbox.addEventListener('input', (ev) => {
+  setCaptureCurrentRenderer(ev.target.checked);
+});
+
+document.body.appendChild(checkbox);
+document.body.appendChild(label);
+document.body.appendChild(document.createElement('br'));
+
 for (let i = 0; i < 64; i++) {
   addRenderer();
 }
@@ -211,7 +246,7 @@ resize();
 
 function updateCamera(renderer) {
   const camera = renderer.getActiveCamera();
-  camera.azimuth(2);
+  camera.azimuth(0.5);
   renderer.resetCameraClippingRange();
 }
 
@@ -228,5 +263,5 @@ window.requestAnimationFrame(animate);
 // ----------------------------------------------------------------------------
 
 global.rw = renderWindow;
-global.glrw = openglRenderWindow;
+global.glrw = renderWindowView;
 global.renderers = RENDERERS;

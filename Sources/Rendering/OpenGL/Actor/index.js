@@ -16,12 +16,12 @@ function vtkOpenGLActor(publicAPI, model) {
   // Builds myself.
   publicAPI.buildPass = (prepass) => {
     if (prepass) {
-      model.openGLRenderWindow = publicAPI.getFirstAncestorOfType(
+      model._openGLRenderWindow = publicAPI.getFirstAncestorOfType(
         'vtkOpenGLRenderWindow'
       );
-      model.openGLRenderer =
+      model._openGLRenderer =
         publicAPI.getFirstAncestorOfType('vtkOpenGLRenderer');
-      model.context = model.openGLRenderWindow.getContext();
+      model.context = model._openGLRenderWindow.getContext();
       publicAPI.prepareNodes();
       publicAPI.addMissingNodes(model.renderable.getTextures());
       publicAPI.addMissingNode(model.renderable.getMapper());
@@ -44,11 +44,12 @@ function vtkOpenGLActor(publicAPI, model) {
     }
   };
 
-  publicAPI.traverseOpaqueZBufferPass = (renderPass) => {
+  // render both opaque and translucent actors
+  publicAPI.traverseZBufferPass = (renderPass) => {
     if (
       !model.renderable ||
       !model.renderable.getNestedVisibility() ||
-      (model.openGLRenderer.getSelector() &&
+      (model._openGLRenderer.getSelector() &&
         !model.renderable.getNestedPickable())
     ) {
       return;
@@ -60,13 +61,17 @@ function vtkOpenGLActor(publicAPI, model) {
     publicAPI.apply(renderPass, false);
   };
 
+  // only render opaque actors
+  publicAPI.traverseOpaqueZBufferPass = (renderPass) =>
+    publicAPI.traverseOpaquePass(renderPass);
+
   // we draw textures, then mapper, then post pass textures
   publicAPI.traverseOpaquePass = (renderPass) => {
     if (
       !model.renderable ||
       !model.renderable.getNestedVisibility() ||
       !model.renderable.getIsOpaque() ||
-      (model.openGLRenderer.getSelector() &&
+      (model._openGLRenderer.getSelector() &&
         !model.renderable.getNestedPickable())
     ) {
       return;
@@ -85,7 +90,7 @@ function vtkOpenGLActor(publicAPI, model) {
       !model.renderable ||
       !model.renderable.getNestedVisibility() ||
       model.renderable.getIsOpaque() ||
-      (model.openGLRenderer.getSelector() &&
+      (model._openGLRenderer.getSelector() &&
         !model.renderable.getNestedPickable())
     ) {
       return;
@@ -126,6 +131,9 @@ function vtkOpenGLActor(publicAPI, model) {
       }
     }
   };
+
+  publicAPI.zBufferPass = (prepass, renderPass) =>
+    publicAPI.opaquePass(prepass, renderPass);
 
   publicAPI.opaqueZBufferPass = (prepass, renderPass) =>
     publicAPI.opaquePass(prepass, renderPass);

@@ -2,7 +2,9 @@ import macro from 'vtk.js/Sources/macros';
 import vtkAbstractWidgetFactory from 'vtk.js/Sources/Widgets/Core/AbstractWidgetFactory';
 import vtkPlane from 'vtk.js/Sources/Common/DataModel/Plane';
 import vtkPlaneSource from 'vtk.js/Sources/Filters/Sources/PlaneSource';
-import vtkResliceCursorContextRepresentation from 'vtk.js/Sources/Widgets/Representations/ResliceCursorContextRepresentation';
+import vtkPlaneManipulator from 'vtk.js/Sources/Widgets/Manipulators/PlaneManipulator';
+import vtkLineHandleRepresentation from 'vtk.js/Sources/Widgets/Representations/LineHandleRepresentation';
+import vtkSphereHandleRepresentation from 'vtk.js/Sources/Widgets/Representations/SphereHandleRepresentation';
 
 import * as vtkMath from 'vtk.js/Sources/Common/Core/Math';
 
@@ -13,9 +15,11 @@ import {
   updateState,
   transformPlane,
 } from 'vtk.js/Sources/Widgets/Widgets3D/ResliceCursorWidget/helpers';
+import { viewTypeToPlaneName } from 'vtk.js/Sources/Widgets/Widgets3D/ResliceCursorWidget/Constants';
+
 import { ViewTypes } from 'vtk.js/Sources/Widgets/Core/WidgetManager/Constants';
 
-import { vec4, mat4 } from 'gl-matrix';
+import { mat4 } from 'gl-matrix';
 import vtkMatrixBuilder from 'vtk.js/Sources/Common/Core/MatrixBuilder';
 
 const VTK_INT_MAX = 2147483647;
@@ -28,7 +32,7 @@ const { vtkErrorMacro } = macro;
 function vtkResliceCursorWidget(publicAPI, model) {
   model.classHierarchy.push('vtkResliceCursorWidget');
 
-  model.methodsToLink = ['scaleInPixels', 'rotationHandlePosition'];
+  model.methodsToLink = ['scaleInPixels'];
 
   // --------------------------------------------------------------------------
   // Private methods
@@ -244,51 +248,62 @@ function vtkResliceCursorWidget(publicAPI, model) {
     renderer.resetCameraClippingRange(bounds);
   }
 
+  /**
+   * Convenient function to return the widget for a given viewType
+   * @param {string} viewType
+   * @returns the widget instanced in the given viewType.
+   */
+  function findWidgetForViewType(viewType) {
+    return publicAPI
+      .getViewIds()
+      .map((viewId) => publicAPI.getWidgetForView({ viewId }))
+      .find((widget) => widget.getViewType() === viewType);
+  }
+  /**
+   * Convenient function to return the ResliceCursorRepresentation for a given viewType
+   * @param {string} viewType
+   * @returns an array of 3 representations (for line handles, rotation handles, center handle)
+   * or an empty array if the widget has not yet been added to the view type.
+   */
+  function findRepresentationsForViewType(viewType) {
+    const widgetForViewType = findWidgetForViewType(viewType);
+    return widgetForViewType ? widgetForViewType.getRepresentations() : [];
+  }
+
   // --------------------------------------------------------------------------
   // initialization
   // --------------------------------------------------------------------------
 
-  model.behavior = widgetBehavior;
-  model.widgetState = stateGenerator();
-
   publicAPI.getRepresentationsForViewType = (viewType) => {
     switch (viewType) {
       case ViewTypes.XY_PLANE:
-        return [
-          {
-            builder: vtkResliceCursorContextRepresentation,
-            labels: ['AxisXinZ', 'AxisYinZ'],
-            initialValues: {
-              axis1Name: 'AxisXinZ',
-              axis2Name: 'AxisYinZ',
-              viewType: ViewTypes.XY_PLANE,
-              rotationEnabled: model.widgetState.getEnableRotation(),
-            },
-          },
-        ];
       case ViewTypes.XZ_PLANE:
-        return [
-          {
-            builder: vtkResliceCursorContextRepresentation,
-            labels: ['AxisXinY', 'AxisZinY'],
-            initialValues: {
-              axis1Name: 'AxisXinY',
-              axis2Name: 'AxisZinY',
-              viewType: ViewTypes.XZ_PLANE,
-              rotationEnabled: model.widgetState.getEnableRotation(),
-            },
-          },
-        ];
       case ViewTypes.YZ_PLANE:
         return [
           {
-            builder: vtkResliceCursorContextRepresentation,
-            labels: ['AxisYinX', 'AxisZinX'],
+            builder: vtkLineHandleRepresentation,
+            labels: [`lineIn${viewTypeToPlaneName[viewType]}`],
             initialValues: {
-              axis1Name: 'AxisYinX',
-              axis2Name: 'AxisZinX',
-              viewType: ViewTypes.YZ_PLANE,
-              rotationEnabled: model.widgetState.getEnableRotation(),
+              useActiveColor: false,
+              scaleInPixels: model.scaleInPixels,
+            },
+          },
+          {
+            builder: vtkSphereHandleRepresentation,
+            labels: [`rotationIn${viewTypeToPlaneName[viewType]}`],
+            initialValues: {
+              useActiveColor: false,
+              scaleInPixels: model.scaleInPixels,
+              lighting: false,
+            },
+          },
+          {
+            builder: vtkSphereHandleRepresentation,
+            labels: ['center'],
+            initialValues: {
+              useActiveColor: false,
+              scaleInPixels: model.scaleInPixels,
+              lighting: false,
             },
           },
         ];
@@ -305,12 +320,20 @@ function vtkResliceCursorWidget(publicAPI, model) {
     model.widgetState.setImage(image);
     const center = image.getCenter();
     model.widgetState.setCenter(center);
-    updateState(model.widgetState);
+    updateState(
+      model.widgetState,
+      model.scaleInPixels,
+      model.rotationHandlePosition
+    );
   };
 
   publicAPI.setCenter = (center) => {
     model.widgetState.setCenter(center);
-    updateState(model.widgetState);
+    updateState(
+      model.widgetState,
+      model.scaleInPixels,
+      model.rotationHandlePosition
+    );
     publicAPI.modified();
   };
 
@@ -388,10 +411,7 @@ function vtkResliceCursorWidget(publicAPI, model) {
     );
   };
 
-  publicAPI.updateReslicePlane = (imageReslice, viewType) => {
-    // Calculate appropriate pixel spacing for the reslicing
-    const spacing = model.widgetState.getImage().getSpacing();
-
+  publicAPI.getPlaneSource = (viewType) => {
     // Compute original (i.e. before rotation) plane (i.e. origin, p1, p2)
     // centered on cursor center.
     const planeSource = computeReslicePlaneOrigin(viewType);
@@ -417,27 +437,56 @@ function vtkResliceCursorWidget(publicAPI, model) {
     planeSource.setPoint1(...boundedP1);
     planeSource.setPoint2(...boundedP2);
 
-    const o = planeSource.getOrigin();
+    return planeSource;
+  };
+
+  publicAPI.getResliceAxes = (viewType) => {
+    // Compute original (i.e. before rotation) plane (i.e. origin, p1, p2)
+    // centered on cursor center.
+    const planeSource = publicAPI.getPlaneSource(viewType);
+
+    // TBD: use normal from planeSource ?
+    const { normal } = model.widgetState.getPlanes()[viewType];
+
+    const planeOrigin = planeSource.getOrigin();
 
     const p1 = planeSource.getPoint1();
     const planeAxis1 = [];
-    vtkMath.subtract(p1, o, planeAxis1);
+    vtkMath.subtract(p1, planeOrigin, planeAxis1);
+    vtkMath.normalize(planeAxis1);
 
     const p2 = planeSource.getPoint2();
     const planeAxis2 = [];
-    vtkMath.subtract(p2, o, planeAxis2);
-
-    // The x,y dimensions of the plane
-    const planeSizeX = vtkMath.normalize(planeAxis1);
-    const planeSizeY = vtkMath.normalize(planeAxis2);
+    vtkMath.subtract(p2, planeOrigin, planeAxis2);
+    vtkMath.normalize(planeAxis2);
 
     const newResliceAxes = mat4.identity(new Float64Array(16));
 
     for (let i = 0; i < 3; i++) {
-      newResliceAxes[4 * i + 0] = planeAxis1[i];
-      newResliceAxes[4 * i + 1] = planeAxis2[i];
-      newResliceAxes[4 * i + 2] = normal[i];
+      newResliceAxes[i] = planeAxis1[i];
+      newResliceAxes[4 + i] = planeAxis2[i];
+      newResliceAxes[8 + i] = normal[i];
+      newResliceAxes[12 + i] = planeOrigin[i];
     }
+
+    return newResliceAxes;
+  };
+
+  publicAPI.updateReslicePlane = (imageReslice, viewType) => {
+    // Calculate appropriate pixel spacing for the reslicing
+    const spacing = model.widgetState.getImage().getSpacing();
+
+    const planeSource = publicAPI.getPlaneSource(viewType);
+    const newResliceAxes = publicAPI.getResliceAxes(viewType);
+
+    const planeOrigin = planeSource.getOrigin();
+    const p1 = planeSource.getPoint1();
+    const planeAxis1 = vtkMath.subtract(p1, planeOrigin, []);
+    const planeSizeX = vtkMath.normalize(planeAxis1);
+
+    const p2 = planeSource.getPoint2();
+    const planeAxis2 = vtkMath.subtract(p2, planeOrigin, []);
+    const planeSizeY = vtkMath.normalize(planeAxis2);
 
     const spacingX =
       Math.abs(planeAxis1[0] * spacing[0]) +
@@ -448,18 +497,6 @@ function vtkResliceCursorWidget(publicAPI, model) {
       Math.abs(planeAxis2[0] * spacing[0]) +
       Math.abs(planeAxis2[1] * spacing[1]) +
       Math.abs(planeAxis2[2] * spacing[2]);
-
-    const planeOrigin = [...planeSource.getOrigin(), 1.0];
-    const originXYZW = [];
-    const newOriginXYZW = [];
-
-    vec4.transformMat4(originXYZW, planeOrigin, newResliceAxes);
-    mat4.transpose(newResliceAxes, newResliceAxes);
-    vec4.transformMat4(newOriginXYZW, originXYZW, newResliceAxes);
-
-    newResliceAxes[4 * 3 + 0] = newOriginXYZW[0];
-    newResliceAxes[4 * 3 + 1] = newOriginXYZW[1];
-    newResliceAxes[4 * 3 + 2] = newOriginXYZW[2];
 
     // Compute a new set of resliced extents
     let extentX = 0;
@@ -527,7 +564,7 @@ function vtkResliceCursorWidget(publicAPI, model) {
       imageReslice.setOutputExtent([0, extentX - 1, 0, extentY - 1, 0, 0]) ||
       modified;
 
-    return { modified, origin: o, point1: p1, point2: p2 };
+    return modified;
   };
 
   /**
@@ -587,18 +624,58 @@ function vtkResliceCursorWidget(publicAPI, model) {
 
     return m;
   };
+
+  publicAPI.getDisplayScaleParams = () =>
+    [ViewTypes.YZ_PLANE, ViewTypes.XZ_PLANE, ViewTypes.XY_PLANE].reduce(
+      (res, viewType) => {
+        res[viewType] =
+          findRepresentationsForViewType(
+            viewType
+          )[0]?.getDisplayScaleParams?.();
+        return res;
+      },
+      {}
+    );
+  publicAPI.setScaleInPixels = macro.chain(
+    publicAPI.setScaleInPixels,
+    (scale) => {
+      publicAPI.getViewWidgets().forEach((w) => w.setScaleInPixels(scale));
+      updateState(
+        model.widgetState,
+        model.scaleInPixels,
+        model.rotationHandlePosition
+      );
+    }
+  );
 }
 
 // ----------------------------------------------------------------------------
-
-const DEFAULT_VALUES = {};
+/**
+ * Initializes the model.
+ * @param {*} initialValues optional object of member variables. initialValues.planes is an optional list of axis names (e.g. ['X', 'Y'])
+ * @returns the initial model object
+ */
+const defaultValues = (initialValues) => ({
+  behavior: widgetBehavior,
+  widgetState: stateGenerator(initialValues.planes),
+  rotationHandlePosition: 0.5,
+  scaleInPixels: true,
+  manipulator: vtkPlaneManipulator.newInstance(),
+  ...initialValues,
+});
 
 // ----------------------------------------------------------------------------
 
 export function extend(publicAPI, model, initialValues = {}) {
-  Object.assign(model, DEFAULT_VALUES, initialValues);
+  Object.assign(model, defaultValues(initialValues));
 
   vtkAbstractWidgetFactory.extend(publicAPI, model, initialValues);
+
+  macro.setGet(publicAPI, model, [
+    'scaleInPixels',
+    'rotationHandlePosition',
+    'manipulator',
+  ]);
 
   vtkResliceCursorWidget(publicAPI, model);
 }

@@ -1,34 +1,40 @@
-import 'vtk.js/Sources/favicon';
+import '@kitware/vtk.js/favicon';
 
 // Load the rendering pieces we want to use (for both WebGL and WebGPU)
-import 'vtk.js/Sources/Rendering/Profiles/All';
+import '@kitware/vtk.js/Rendering/Profiles/All';
 
 // Force the loading of HttpDataAccessHelper to support gzip decompression
-import 'vtk.js/Sources/IO/Core/DataAccessHelper/HttpDataAccessHelper';
+import '@kitware/vtk.js/IO/Core/DataAccessHelper/HttpDataAccessHelper';
 
-import vtkFullScreenRenderWindow from 'vtk.js/Sources/Rendering/Misc/FullScreenRenderWindow';
-import vtkWidgetManager from 'vtk.js/Sources/Widgets/Core/WidgetManager';
-import vtkRectangleWidget from 'vtk.js/Sources/Widgets/Widgets3D/RectangleWidget';
-import vtkEllipseWidget from 'vtk.js/Sources/Widgets/Widgets3D/EllipseWidget';
-import vtkInteractorStyleImage from 'vtk.js/Sources/Interaction/Style/InteractorStyleImage';
-import vtkHttpDataSetReader from 'vtk.js/Sources/IO/Core/HttpDataSetReader';
-import vtkImageMapper from 'vtk.js/Sources/Rendering/Core/ImageMapper';
-import vtkImageSlice from 'vtk.js/Sources/Rendering/Core/ImageSlice';
-import vtkSphere from 'vtk.js/Sources/Common/DataModel/Sphere';
+import vtkFullScreenRenderWindow from '@kitware/vtk.js/Rendering/Misc/FullScreenRenderWindow';
+import vtkWidgetManager from '@kitware/vtk.js/Widgets/Core/WidgetManager';
+import vtkRectangleWidget from '@kitware/vtk.js/Widgets/Widgets3D/RectangleWidget';
+import vtkEllipseWidget from '@kitware/vtk.js/Widgets/Widgets3D/EllipseWidget';
+import vtkInteractorStyleImage from '@kitware/vtk.js/Interaction/Style/InteractorStyleImage';
+import vtkHttpDataSetReader from '@kitware/vtk.js/IO/Core/HttpDataSetReader';
+import vtkImageMapper from '@kitware/vtk.js/Rendering/Core/ImageMapper';
+import vtkImageSlice from '@kitware/vtk.js/Rendering/Core/ImageSlice';
+import vtkSphere from '@kitware/vtk.js/Common/DataModel/Sphere';
+import vtkInteractorObserver from '@kitware/vtk.js/Rendering/Core/InteractorObserver';
+import {
+  bindSVGRepresentation,
+  multiLineTextCalculator,
+  VerticalTextAlignment,
+} from 'vtk.js/Examples/Widgets/Utilities/SVGHelpers';
 
 import {
   BehaviorCategory,
   ShapeBehavior,
   TextPosition,
-} from 'vtk.js/Sources/Widgets/Widgets3D/ShapeWidget/Constants';
+} from '@kitware/vtk.js/Widgets/Widgets3D/ShapeWidget/Constants';
 
-import { VerticalTextAlignment } from 'vtk.js/Sources/Widgets/SVG/SVGLandmarkRepresentation/Constants';
-
-import { ViewTypes } from 'vtk.js/Sources/Widgets/Core/WidgetManager/Constants';
+import { ViewTypes } from '@kitware/vtk.js/Widgets/Core/WidgetManager/Constants';
 
 import { vec3 } from 'gl-matrix';
 
 import controlPanel from './controlPanel.html';
+
+const { computeWorldToDisplay } = vtkInteractorObserver;
 
 // ----------------------------------------------------------------------------
 // Standard rendering code setup
@@ -115,11 +121,6 @@ scene.rectangleHandle = scene.widgetManager.addWidget(
   ViewTypes.SLICE
 );
 scene.rectangleHandle.setHandleVisibility(false);
-scene.rectangleHandle.setTextProps({
-  ...scene.rectangleHandle.getTextProps(),
-  'text-anchor': 'middle',
-  verticalAlign: VerticalTextAlignment.MIDDLE,
-});
 widgets.rectangleWidget
   .getWidgetState()
   .setTextPosition([
@@ -132,11 +133,6 @@ scene.ellipseHandle = scene.widgetManager.addWidget(
   widgets.ellipseWidget,
   ViewTypes.SLICE
 );
-scene.ellipseHandle.setTextProps({
-  ...scene.ellipseHandle.getTextProps(),
-  'text-anchor': 'middle',
-  verticalAlign: VerticalTextAlignment.MIDDLE,
-});
 
 scene.circleHandle = scene.widgetManager.addWidget(
   widgets.circleWidget,
@@ -286,9 +282,9 @@ reader
         ijk[slicingMode] = image.imageMapper.getSlice();
         data.indexToWorld(ijk, slicePos);
 
-        widgets.rectangleWidget.getManipulator().setOrigin(slicePos);
-        widgets.ellipseWidget.getManipulator().setOrigin(slicePos);
-        widgets.circleWidget.getManipulator().setOrigin(slicePos);
+        widgets.rectangleWidget.getManipulator().setUserOrigin(slicePos);
+        widgets.ellipseWidget.getManipulator().setUserOrigin(slicePos);
+        widgets.circleWidget.getManipulator().setUserOrigin(slicePos);
 
         updateWidgetsVisibility(slicePos, slicingMode);
 
@@ -354,6 +350,71 @@ document.querySelector('.reset').addEventListener('click', () => {
   resetWidgets();
   scene.renderWindow.render();
 });
+
+// ----------------------------------------------------------------------------
+// SVG
+// ----------------------------------------------------------------------------
+
+function setupSVG(widget, options) {
+  bindSVGRepresentation(scene.renderer, widget.getWidgetState(), {
+    mapState(widgetState, { size }) {
+      const textState = widgetState.getText();
+      const text = textState.getText();
+      const origin = textState.getOrigin();
+      if (origin && textState.getVisible()) {
+        const coords = computeWorldToDisplay(scene.renderer, ...origin);
+        const position = [coords[0], size[1] - coords[1]];
+        return {
+          text,
+          position,
+        };
+      }
+      return null;
+    },
+    render(data, h) {
+      if (data) {
+        const lines = data.text.split('\n');
+        const fontSize = 32;
+        const dys = multiLineTextCalculator(
+          lines.length,
+          fontSize,
+          VerticalTextAlignment.MIDDLE
+        );
+        return lines.map((line, index) =>
+          h(
+            'text',
+            {
+              key: index,
+              attrs: {
+                x: data.position[0],
+                y: data.position[1],
+                dx: 12,
+                dy: dys[index],
+                fill: 'white',
+                'font-size': fontSize,
+                ...options?.textProps,
+              },
+            },
+            line
+          )
+        );
+      }
+      return [];
+    },
+  });
+}
+
+setupSVG(widgets.rectangleWidget, {
+  textProps: {
+    'text-anchor': 'middle',
+  },
+});
+setupSVG(widgets.ellipseWidget, {
+  textProps: {
+    'text-anchor': 'middle',
+  },
+});
+setupSVG(widgets.circleWidget);
 
 global.scene = scene;
 global.widgets = widgets;

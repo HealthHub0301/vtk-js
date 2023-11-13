@@ -13,6 +13,7 @@ import vtkPolyData from 'vtk.js/Sources/Common/DataModel/PolyData';
 import { areEquals } from 'vtk.js/Sources/Common/Core/Math';
 
 import baseline from './testColorTransferFunction.png';
+import baseline2 from './testColorTransferFunction2.png';
 
 test('Test Color Transfer Function', (t) => {
   const gc = testUtils.createGarbageCollector(t);
@@ -111,7 +112,7 @@ test('Test Color Transfer Function', (t) => {
   glwindow.captureNextImage().then((image) => {
     testUtils.compareImages(
       image,
-      [baseline],
+      [baseline, baseline2],
       'Rendering/Core/ColorTransferFunction/testColorTransferFunction',
       t,
       5,
@@ -155,6 +156,64 @@ test('Test discretized color transfer function', (t) => {
       `Test discretized ctf value for ${value}, expect ${expectedRGB[idx]}`
     );
   });
+
+  t.end();
+});
+
+test('Test applyColorMap calls modified', (t) => {
+  const ctf = vtkColorTransferFunction.newInstance();
+
+  const colorMapA = {
+    ColorSpace: 'RGB',
+    RGBPoints: [0, 0, 0, 0, 1, 0, 0, 0],
+  };
+  const colorMapB = {
+    ColorSpace: 'RGB',
+    RGBPoints: [0, 0, 0, 0, 1, 1, 1, 1],
+  };
+
+  ctf.applyColorMap(colorMapA);
+
+  let isModified = false;
+  ctf.onModified(() => {
+    isModified = true;
+  });
+
+  ctf.applyColorMap(colorMapA);
+  t.notOk(
+    isModified,
+    `Expect applyColorMap does not call modified with same color map`
+  );
+
+  ctf.applyColorMap(colorMapB);
+  t.ok(
+    isModified,
+    `Expect applyColorMap calls modified with different color map`
+  );
+
+  colorMapB.ColorSpace = 'LAB';
+  isModified = false;
+  let modifiedReturn = ctf.applyColorMap(colorMapB);
+  t.ok(
+    isModified && modifiedReturn,
+    `Expect applyColorMap calls modified with different ColorSpace`
+  );
+
+  colorMapB.NanColor = [0, 0, 0, 1];
+  isModified = false;
+  modifiedReturn = ctf.applyColorMap(colorMapB);
+  t.ok(
+    isModified && modifiedReturn,
+    `Expect applyColorMap calls modified with different NanColor`
+  );
+
+  colorMapB.RGBPoints = [0, 0, 0, 0, 0.5, 1, 1, 1, 1, 1, 1, 1];
+  isModified = false;
+  modifiedReturn = ctf.applyColorMap(colorMapB);
+  t.ok(
+    isModified && modifiedReturn,
+    `Expect applyColorMap calls modified with different RGBPoints`
+  );
 
   t.end();
 });

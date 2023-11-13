@@ -4,6 +4,7 @@ import vtkWidgetState from 'vtk.js/Sources/Widgets/Core/WidgetState';
 
 import bounds from 'vtk.js/Sources/Widgets/Core/StateBuilder/boundsMixin';
 import color from 'vtk.js/Sources/Widgets/Core/StateBuilder/colorMixin';
+import color3 from 'vtk.js/Sources/Widgets/Core/StateBuilder/color3Mixin';
 import corner from 'vtk.js/Sources/Widgets/Core/StateBuilder/cornerMixin';
 import direction from 'vtk.js/Sources/Widgets/Core/StateBuilder/directionMixin';
 import manipulator from 'vtk.js/Sources/Widgets/Core/StateBuilder/manipulatorMixin';
@@ -25,6 +26,7 @@ const { vtkErrorMacro } = macro;
 const MIXINS = {
   bounds,
   color,
+  color3,
   corner,
   direction,
   manipulator,
@@ -81,8 +83,11 @@ class Builder {
     const listName = `${name}List`;
     this.model[listName] = [];
     // Create new Instance method
-    this.publicAPI[`add${macro.capitalize(name)}`] = () => {
-      const instance = newInstance(mixins, initialValues);
+    this.publicAPI[`add${macro.capitalize(name)}`] = (values) => {
+      const instance = newInstance(mixins, {
+        ...initialValues,
+        ...values,
+      });
       this.publicAPI.bindState(instance, labels);
       this.model[listName].push(instance);
       this.publicAPI.modified();

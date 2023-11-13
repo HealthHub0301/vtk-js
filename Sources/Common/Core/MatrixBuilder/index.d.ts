@@ -1,5 +1,5 @@
-import { mat4 } from 'gl-matrix';
-import { TypedArray } from '../../../types';
+import { mat3, mat4 } from 'gl-matrix';
+import { TypedArray, Vector3 } from '../../../types';
 
 declare interface Transform {
 
@@ -22,9 +22,9 @@ declare interface Transform {
 	 * Normalizes the axis of rotation then rotates the current matrix `angle`
 	 * degrees/radians around the provided axis.
 	 * @param {Number} angle 
-	 * @param {Number} axis 
+	 * @param {Vector3} axis 
 	 */
-	rotate(angle: number, axis: number): Transform
+	rotate(angle: number, axis: Vector3): Transform
 
 	/**
 	 * Rotates `angle` degrees/radians around the X axis.
@@ -67,9 +67,20 @@ declare interface Transform {
 	multiply(mat4x4: mat4): Transform
 
 	/**
+	 * Multiply the current matrix with the provided 3x3 matrix.
+	 * @param {mat3} mat3x3 column-first matrix
+	 */
+	 multiply3x3(mat3x3: mat3): Transform
+	
+	/**
 	 * Resets the MatrixBuilder to the Identity matrix.
-	 */	
+	 */
 	identity(): Transform
+
+	/**
+	 * Inverts the MatrixBuilder matrix.
+	 */
+	invert(): Transform
 
 	/**
 	 * Multiplies the array by the MatrixBuilder's internal matrix, in sets of
@@ -78,11 +89,11 @@ declare interface Transform {
 	 * iterations (sets of 3) to loop through. Assumes the `typedArray` is an
 	 * array of multiples of 3, unless specifically handling with offset and
 	 * iterations. Returns the instance for chaining.
-	 * @param {TypedArray} typedArray 
+	 * @param {Number[]|TypedArray} typedArray The Array value.
 	 * @param {Number} [offset] 
 	 * @param {Number} [nbIterations] 
 	 */
-	apply(typedArray: TypedArray, offset?: number, nbIterations?: number): Transform
+	apply(typedArray: number[]|TypedArray, offset?: number, nbIterations?: number): Transform
 
 	/**
 	 * Returns the internal `mat4` matrix.

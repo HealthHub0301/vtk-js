@@ -1,5 +1,6 @@
 import macro from 'vtk.js/Sources/macros';
 import vtkImageData from 'vtk.js/Sources/Common/DataModel/ImageData';
+import vtkPolyData from 'vtk.js/Sources/Common/DataModel/PolyData';
 import vtkDataArray from 'vtk.js/Sources/Common/Core/DataArray';
 
 const { vtkErrorMacro } = macro;
@@ -44,12 +45,34 @@ const ITKWASMPixelTypes = {
   VariableSizeMatrix: 'VariableSizeMatrix',
 };
 
+const vtkArrayTypeToItkComponentType = new Map([
+  ['Uint8Array', 'uint8'],
+  ['Int8Array', 'int8'],
+  ['Uint16Array', 'uint16'],
+  ['Int16Array', 'int16'],
+  ['Uint32Array', 'uint32'],
+  ['Int32Array', 'int32'],
+  ['Float32Array', 'float32'],
+  ['Float64Array', 'float64'],
+]);
+
+const itkComponentTypeToVtkArrayType = new Map([
+  ['uint8', 'Uint8Array'],
+  ['int8', 'Int8Array'],
+  ['uint16', 'Uint16Array'],
+  ['int16', 'Int16Array'],
+  ['uint32', 'Uint32Array'],
+  ['int32', 'Int32Array'],
+  ['float32', 'Float32Array'],
+  ['float64', 'Float64Array'],
+]);
+
 /**
- * Converts an itk.js image to a vtk.js image.
+ * Converts an itk-wasm Image to a vtk.js vtkImageData.
  *
- * Requires an itk.js image as input.
+ * Requires an itk-wasm Image as input.
  */
-function convertItkToVtkImage(itkImage, options = {}) {
+export function convertItkToVtkImage(itkImage, options = {}) {
   const vtkImage = {
     origin: [0, 0, 0],
     spacing: [1, 1, 1],
@@ -160,7 +183,7 @@ function convertItkToVtkImage(itkImage, options = {}) {
       break;
     default:
       vtkErrorMacro(
-        `Cannot handle unexpected ITK.js pixel type ${itkImage.imageType.pixelType}`
+        `Cannot handle unexpected itk-wasm pixel type ${itkImage.imageType.pixelType}`
       );
       return null;
   }
@@ -168,50 +191,34 @@ function convertItkToVtkImage(itkImage, options = {}) {
   return imageData;
 }
 
-const vtkArrayTypeToItkComponentType = new Map([
-  ['Uint8Array', 'uint8_t'],
-  ['Int8Array', 'int8_t'],
-  ['Uint16Array', 'uint16_t'],
-  ['Int16Array', 'int16_t'],
-  ['Uint32Array', 'uint32_t'],
-  ['Int32Array', 'int32_t'],
-  ['Float32Array', 'float'],
-  ['Float64Array', 'double'],
-]);
-
 /**
- * Converts a vtk.js image to an itk.js image.
+ * Converts a vtk.js vtkImageData to an itk-wasm Image.
  *
- * Requires a vtk.js image as input.
+ * Requires a vtk.js vtkImageData as input.
+ *
  */
-function convertVtkToItkImage(vtkImage, copyData = false) {
+export function convertVtkToItkImage(vtkImage, copyData = false) {
+  const dimension = 3;
   const itkImage = {
     imageType: {
-      dimension: 3,
-      pixelType: ITKJSPixelTypes.Scalar,
+      dimension,
+      pixelType: ITKWASMPixelTypes.Scalar,
       componentType: '',
       components: 1,
     },
-    name: 'name',
+    name: 'vtkImageData',
     origin: vtkImage.getOrigin(),
     spacing: vtkImage.getSpacing(),
-    direction: {
-      data: [1, 0, 0, 0, 1, 0, 0, 0, 1],
-    },
+    direction: new Float64Array(9),
     size: vtkImage.getDimensions(),
   };
 
   const direction = vtkImage.getDirection();
 
-  const dimension = itkImage.size.length;
-  itkImage.imageType.dimension = dimension;
-  itkImage.direction.rows = dimension;
-  itkImage.direction.columns = dimension;
-
   // Transpose the direction matrix from column-major to row-major
   for (let idx = 0; idx < dimension; ++idx) {
     for (let idy = 0; idy < dimension; ++idy) {
-      itkImage.direction.data[idx + idy * dimension] =
+      itkImage.direction[idx + idy * dimension] =
         direction[idy + idx * dimension];
     }
   }
@@ -220,10 +227,10 @@ function convertVtkToItkImage(vtkImage, copyData = false) {
 
   let vtkArray;
   if (pointData.getTensors() !== null) {
-    itkImage.imageType.pixelType = ITKJSPixelTypes.DiffusionTensor3D;
+    itkImage.imageType.pixelType = ITKWASMPixelTypes.DiffusionTensor3D;
     vtkArray = pointData.getTensors();
   } else if (pointData.getVectors() != null) {
-    itkImage.imageType.pixelType = ITKJSPixelTypes.Vector;
+    itkImage.imageType.pixelType = ITKWASMPixelTypes.Vector;
     vtkArray = pointData.getVectors();
   } else {
     vtkArray = pointData.getScalars();
@@ -243,7 +250,320 @@ function convertVtkToItkImage(vtkImage, copyData = false) {
   return itkImage;
 }
 
+/**
+ * Converts an itk-wasm PolyData to a vtk.js vtkPolyData.
+ *
+ * Requires an itk-wasm PolyData as input.
+ */
+export function convertItkToVtkPolyData(itkPolyData, options = {}) {
+  const pointDataArrays = [];
+  if (itkPolyData.pointData.length) {
+    pointDataArrays.push({
+      data: {
+        vtkClass: 'vtkDataArray',
+        name: options.pointDataName || 'PointData',
+        numberOfComponents: itkPolyData.polyDataType.pointPixelComponents,
+        size: itkPolyData.pointData.length,
+        dataType: itkComponentTypeToVtkArrayType.get(
+          itkPolyData.polyDataType.pointPixelComponentType
+        ),
+        buffer: itkPolyData.pointData.buffer,
+        values: itkPolyData.pointData,
+      },
+    });
+  }
+  const cellDataArrays = [];
+  if (itkPolyData.cellData.length) {
+    cellDataArrays.push({
+      data: {
+        vtkClass: 'vtkDataArray',
+        name: options.cellDataName || 'CellData',
+        numberOfComponents: itkPolyData.polyDataType.pointPixelComponents,
+        size: itkPolyData.cellData.length,
+        dataType: itkComponentTypeToVtkArrayType.get(
+          itkPolyData.polyDataType.pointPixelComponentType
+        ),
+        buffer: itkPolyData.cellData.buffer,
+        values: itkPolyData.cellData,
+      },
+    });
+  }
+  const vtkPolyDataModel = {
+    points: {
+      vtkClass: 'vtkPoints',
+      name: '_points',
+      numberOfComponents: 3,
+      size: itkPolyData.numberOfPoints,
+      dataType: 'Float32Array',
+      buffer: itkPolyData.points.buffer,
+      values: itkPolyData.points,
+    },
+    verts: {
+      vtkClass: 'vtkCellArray',
+      name: '_verts',
+      numberOfComponents: 1,
+      size: itkPolyData.verticesBufferSize,
+      dataType: 'Uint32Array',
+      buffer: itkPolyData.vertices.buffer,
+      values: itkPolyData.vertices,
+    },
+    lines: {
+      vtkClass: 'vtkCellArray',
+      name: '_lines',
+      numberOfComponents: 1,
+      size: itkPolyData.linesBufferSize,
+      dataType: 'Uint32Array',
+      buffer: itkPolyData.lines.buffer,
+      values: itkPolyData.lines,
+    },
+    polys: {
+      vtkClass: 'vtkCellArray',
+      name: '_polys',
+      numberOfComponents: 1,
+      size: itkPolyData.polygonsBufferSize,
+      dataType: 'Uint32Array',
+      buffer: itkPolyData.polygons.buffer,
+      values: itkPolyData.polygons,
+    },
+    strips: {
+      vtkClass: 'vtkCellArray',
+      name: '_strips',
+      numberOfComponents: 1,
+      size: itkPolyData.triangleStripsBufferSize,
+      dataType: 'Uint32Array',
+      buffer: itkPolyData.triangleStrips.buffer,
+      values: itkPolyData.triangleStrips,
+    },
+    pointData: {
+      vtkClass: 'vtkDataSetAttributes',
+      activeGlobalIds: -1,
+      activeNormals: -1,
+      activePedigreeIds: -1,
+      activeScalars: -1,
+      activeTCoords: -1,
+      activeTensors: -1,
+      activeVectors: -1,
+      copyFieldFlags: [],
+      doCopyAllOff: false,
+      doCopyAllOn: true,
+      arrays: pointDataArrays,
+    },
+    cellData: {
+      vtkClass: 'vtkDataSetAttributes',
+      activeGlobalIds: -1,
+      activeNormals: -1,
+      activePedigreeIds: -1,
+      activeScalars: -1,
+      activeTCoords: -1,
+      activeTensors: -1,
+      activeVectors: -1,
+      copyFieldFlags: [],
+      doCopyAllOff: false,
+      doCopyAllOn: true,
+      arrays: cellDataArrays,
+    },
+  };
+
+  // Create VTK PolyData
+  const polyData = vtkPolyData.newInstance(vtkPolyDataModel);
+  const pd = polyData.getPointData();
+  const cd = polyData.getCellData();
+
+  if (itkPolyData.pointData.length) {
+    // Associate the point data that are 3D vectors / tensors
+    switch (ITKWASMPixelTypes[itkPolyData.polyDataType.pointPixelType]) {
+      case ITKWASMPixelTypes.Scalar:
+        pd.setScalars(pd.getArrayByIndex(0));
+        break;
+      case ITKWASMPixelTypes.RGB:
+        break;
+      case ITKWASMPixelTypes.RGBA:
+        break;
+      case ITKWASMPixelTypes.Offset:
+        break;
+      case ITKWASMPixelTypes.Vector:
+        if (itkPolyData.polyDataType.pointPixelComponents === 3) {
+          pd.setVectors(pd.getArrayByIndex(0));
+        }
+        break;
+      case ITKWASMPixelTypes.Point:
+        break;
+      case ITKWASMPixelTypes.CovariantVector:
+        if (itkPolyData.polyDataType.pointPixelComponents === 3) {
+          pd.setVectors(pd.getArrayByIndex(0));
+        }
+        break;
+      case ITKWASMPixelTypes.SymmetricSecondRankTensor:
+        if (itkPolyData.polyDataType.pointPixelComponents === 6) {
+          pd.setTensors(pd.getArrayByIndex(0));
+        }
+        break;
+      case ITKWASMPixelTypes.DiffusionTensor3D:
+        if (itkPolyData.polyDataType.pointPixelComponents === 6) {
+          pd.setTensors(pd.getArrayByIndex(0));
+        }
+        break;
+      case ITKWASMPixelTypes.Complex:
+        break;
+      case ITKWASMPixelTypes.FixedArray:
+        break;
+      case ITKWASMPixelTypes.Array:
+        break;
+      case ITKWASMPixelTypes.Matrix:
+        break;
+      case ITKWASMPixelTypes.VariableLengthVector:
+        break;
+      case ITKWASMPixelTypes.VariableSizeMatrix:
+        break;
+      default:
+        vtkErrorMacro(
+          `Cannot handle unexpected itk-wasm pixel type ${itkPolyData.polyDataType.pointPixelType}`
+        );
+        return null;
+    }
+  }
+
+  if (itkPolyData.cellData.length) {
+    // Associate the cell data that are 3D vectors / tensors
+    switch (ITKWASMPixelTypes[itkPolyData.polyDataType.cellPixelType]) {
+      case ITKWASMPixelTypes.Scalar:
+        cd.setScalars(cd.getArrayByIndex(0));
+        break;
+      case ITKWASMPixelTypes.RGB:
+        break;
+      case ITKWASMPixelTypes.RGBA:
+        break;
+      case ITKWASMPixelTypes.Offset:
+        break;
+      case ITKWASMPixelTypes.Vector:
+        if (itkPolyData.polyDataType.pointPixelComponents === 3) {
+          cd.setVectors(cd.getArrayByIndex(0));
+        }
+        break;
+      case ITKWASMPixelTypes.Point:
+        break;
+      case ITKWASMPixelTypes.CovariantVector:
+        if (itkPolyData.polyDataType.pointPixelComponents === 3) {
+          cd.setVectors(cd.getArrayByIndex(0));
+        }
+        break;
+      case ITKWASMPixelTypes.SymmetricSecondRankTensor:
+        if (itkPolyData.polyDataType.pointPixelComponents === 6) {
+          cd.setTensors(cd.getArrayByIndex(0));
+        }
+        break;
+      case ITKWASMPixelTypes.DiffusionTensor3D:
+        if (itkPolyData.polyDataType.pointPixelComponents === 6) {
+          cd.setTensors(cd.getArrayByIndex(0));
+        }
+        break;
+      case ITKWASMPixelTypes.Complex:
+        break;
+      case ITKWASMPixelTypes.FixedArray:
+        break;
+      case ITKWASMPixelTypes.Array:
+        break;
+      case ITKWASMPixelTypes.Matrix:
+        break;
+      case ITKWASMPixelTypes.VariableLengthVector:
+        break;
+      case ITKWASMPixelTypes.VariableSizeMatrix:
+        break;
+      default:
+        vtkErrorMacro(
+          `Cannot handle unexpected itk-wasm pixel type ${itkPolyData.polyDataType.pointPixelType}`
+        );
+        return null;
+    }
+  }
+  return polyData;
+}
+
+/**
+ * Converts a vtk.js vtkPolyData to an itk-wasm PolyData.
+ *
+ * Requires a vtk.js vtkPolyData as input.
+ *
+ */
+export function convertVtkToItkPolyData(polyData, options = {}) {
+  const itkPolyData = {
+    polyDataType: {
+      pointPixelComponentType: 'float32',
+      pointPixelComponents: 1,
+      pointPixelType: 'Scalar',
+      cellPixelComponentType: 'float32',
+      cellPixelComponents: 1,
+      cellPixelType: 'Scalar',
+    },
+    numberOfPoints: polyData.getNumberOfPoints(),
+    points: polyData.getPoints().getData(),
+    verticesBufferSize: polyData.getVerts().getNumberOfValues(),
+    vertices: polyData.getVerts().getData(),
+    linesBufferSize: polyData.getLines().getNumberOfValues(),
+    lines: polyData.getLines().getData(),
+    polygonsBufferSize: polyData.getPolys().getNumberOfValues(),
+    polygons: polyData.getPolys().getData(),
+    triangleStripsBufferSize: polyData.getStrips().getNumberOfValues(),
+    triangleStrips: polyData.getStrips().getData(),
+    numberOfPointPixels: 0,
+    pointData: new Float32Array(),
+    numberOfCellPixels: 0,
+    cellData: new Float32Array(),
+  };
+
+  const pd = polyData.getPointData();
+  if (pd.getNumberOfArrays()) {
+    const pdArray = options.pointDataName
+      ? pd.getArrayByName(options.pointDataName)
+      : pd.getArrayByIndex(0);
+    itkPolyData.numberOfPointPixels = pdArray.getNumberOfTuples();
+    itkPolyData.pointData = pdArray.getData();
+    itkPolyData.polyDataType.pointPixelComponentType =
+      vtkArrayTypeToItkComponentType.get(pdArray.getDataType());
+    // default to the same type
+    itkPolyData.polyDataType.cellPixelComponentType =
+      itkPolyData.polyDataType.pointPixelComponentType;
+    itkPolyData.polyDataType.pointPixelComponents =
+      pdArray.getNumberOfComponents();
+    itkPolyData.polyDataType.cellPixelComponents =
+      itkPolyData.polyDataType.pointPixelComponents;
+    if (pd.getTensors() === pdArray) {
+      itkPolyData.polyDataType.pointPixelType =
+        ITKWASMPixelTypes.SymmetricSecondRankTensor;
+    } else if (pd.getVectors() === pdArray) {
+      itkPolyData.polyDataType.pointPixelType = ITKWASMPixelTypes.Vector;
+    }
+    itkPolyData.polyDataType.cellPixelType =
+      itkPolyData.polyDataType.pointPixelType;
+  }
+
+  const cd = polyData.getCellData();
+  if (cd.getNumberOfArrays()) {
+    const cdArray = options.cellDataName
+      ? pd.getArrayByName(options.cellDataName)
+      : pd.getArrayByIndex(0);
+    itkPolyData.numberOfCellPixels = cdArray.getNumberOfTuples();
+    itkPolyData.cellData = cdArray.getData();
+    itkPolyData.polyDataType.cellPixelComponentType =
+      vtkArrayTypeToItkComponentType.get(cdArray.getDataType());
+    itkPolyData.polyDataType.cellPixelComponents =
+      cdArray.getNumberOfComponents();
+    if (cd.getTensors() === cdArray) {
+      itkPolyData.polyDataType.cellPixelType =
+        ITKWASMPixelTypes.SymmetricSecondRankTensor;
+    } else if (cd.getVectors() === cdArray) {
+      itkPolyData.polyDataType.cellPixelType = ITKWASMPixelTypes.Vector;
+    } else {
+      itkPolyData.polyDataType.cellPixelType = ITKWASMPixelTypes.Scalar;
+    }
+  }
+
+  return itkPolyData;
+}
+
 export default {
   convertItkToVtkImage,
   convertVtkToItkImage,
+  convertItkToVtkPolyData,
+  convertVtkToItkPolyData,
 };

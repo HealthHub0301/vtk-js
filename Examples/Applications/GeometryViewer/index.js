@@ -1,32 +1,34 @@
 /* eslint-disable import/prefer-default-export */
 /* eslint-disable import/no-extraneous-dependencies */
 
-import 'vtk.js/Sources/favicon';
+import '@kitware/vtk.js/favicon';
 
 // Load the rendering pieces we want to use (for both WebGL and WebGPU)
-import 'vtk.js/Sources/Rendering/Profiles/Geometry';
+import '@kitware/vtk.js/Rendering/Profiles/Geometry';
 
-import { formatBytesToProperUnit, debounce } from 'vtk.js/Sources/macros';
-import HttpDataAccessHelper from 'vtk.js/Sources/IO/Core/DataAccessHelper/HttpDataAccessHelper';
-import vtkActor from 'vtk.js/Sources/Rendering/Core/Actor';
-import vtkDataArray from 'vtk.js/Sources/Common/Core/DataArray';
-import vtkScalarBarActor from 'vtk.js/Sources/Rendering/Core/ScalarBarActor';
-import vtkColorMaps from 'vtk.js/Sources/Rendering/Core/ColorTransferFunction/ColorMaps';
-import vtkColorTransferFunction from 'vtk.js/Sources/Rendering/Core/ColorTransferFunction';
-import vtkFullScreenRenderWindow from 'vtk.js/Sources/Rendering/Misc/FullScreenRenderWindow';
-import vtkMapper from 'vtk.js/Sources/Rendering/Core/Mapper';
-import vtkURLExtract from 'vtk.js/Sources/Common/Core/URLExtract';
-import vtkXMLPolyDataReader from 'vtk.js/Sources/IO/XML/XMLPolyDataReader';
-import vtkFPSMonitor from 'vtk.js/Sources/Interaction/UI/FPSMonitor';
+import { formatBytesToProperUnit, debounce } from '@kitware/vtk.js/macros';
+import HttpDataAccessHelper from '@kitware/vtk.js/IO/Core/DataAccessHelper/HttpDataAccessHelper';
+import vtkActor from '@kitware/vtk.js/Rendering/Core/Actor';
+import vtkDataArray from '@kitware/vtk.js/Common/Core/DataArray';
+import vtkScalarBarActor from '@kitware/vtk.js/Rendering/Core/ScalarBarActor';
+import vtkColorMaps from '@kitware/vtk.js/Rendering/Core/ColorTransferFunction/ColorMaps';
+import vtkColorTransferFunction from '@kitware/vtk.js/Rendering/Core/ColorTransferFunction';
+import vtkFullScreenRenderWindow from '@kitware/vtk.js/Rendering/Misc/FullScreenRenderWindow';
+import vtkWebXRRenderWindowHelper from '@kitware/vtk.js/Rendering/WebXR/RenderWindowHelper';
+import vtkMapper from '@kitware/vtk.js/Rendering/Core/Mapper';
+import vtkURLExtract from '@kitware/vtk.js/Common/Core/URLExtract';
+import vtkXMLPolyDataReader from '@kitware/vtk.js/IO/XML/XMLPolyDataReader';
+import vtkFPSMonitor from '@kitware/vtk.js/Interaction/UI/FPSMonitor';
+import { XrSessionTypes } from '@kitware/vtk.js/Rendering/WebXR/RenderWindowHelper/Constants';
 
 // Force DataAccessHelper to have access to various data source
-import 'vtk.js/Sources/IO/Core/DataAccessHelper/HtmlDataAccessHelper';
-import 'vtk.js/Sources/IO/Core/DataAccessHelper/JSZipDataAccessHelper';
+import '@kitware/vtk.js/IO/Core/DataAccessHelper/HtmlDataAccessHelper';
+import '@kitware/vtk.js/IO/Core/DataAccessHelper/JSZipDataAccessHelper';
 
 import {
   ColorMode,
   ScalarMode,
-} from 'vtk.js/Sources/Rendering/Core/Mapper/Constants';
+} from '@kitware/vtk.js/Rendering/Core/Mapper/Constants';
 
 import style from './GeometryViewer.module.css';
 import icon from '../../../Documentation/content/icon/favicon-96x96.png';
@@ -35,6 +37,7 @@ let autoInit = true;
 let background = [0, 0, 0];
 let fullScreenRenderWindow;
 let renderWindow;
+let xrRenderWindowHelper;
 let renderer;
 let scalarBarActor;
 
@@ -73,6 +76,44 @@ function updateCamera(camera) {
 function preventDefaults(e) {
   e.preventDefault();
   e.stopPropagation();
+}
+
+// WebXR
+let requestedXrSessionType =
+  userParams.xrSessionType !== undefined ? userParams.xrSessionType : null;
+if (
+  requestedXrSessionType !== null &&
+  !Object.values(XrSessionTypes).includes(requestedXrSessionType)
+) {
+  console.warn(
+    'Could not parse requested XR session type: ',
+    requestedXrSessionType
+  );
+  requestedXrSessionType = null;
+}
+
+if (requestedXrSessionType === XrSessionTypes.LookingGlassVR) {
+  // Import the Looking Glass WebXR Polyfill override
+  // Assumes that the Looking Glass Bridge native application is already running.
+  // See https://docs.lookingglassfactory.com/developer-tools/webxr
+  import(
+    // eslint-disable-next-line import/no-unresolved, import/extensions
+    /* webpackIgnore: true */ 'https://unpkg.com/@lookingglass/webxr@0.3.0/dist/@lookingglass/bundle/webxr.js'
+  ).then((obj) => {
+    // eslint-disable-next-line no-new
+    new obj.LookingGlassWebXRPolyfill();
+  });
+} else if (requestedXrSessionType === null) {
+  // Guess the session type based on what XR session(s) the device supports
+  navigator.xr.isSessionSupported('immersive-vr').then((vrSupported) => {
+    if (vrSupported) {
+      requestedXrSessionType = XrSessionTypes.HmdVr;
+    } else {
+      navigator.xr.isSessionSupported('immersive-ar').then((arSupported) => {
+        requestedXrSessionType = arSupported ? XrSessionTypes.MobileAR : null;
+      });
+    }
+  });
 }
 
 // ----------------------------------------------------------------------------
@@ -123,6 +164,9 @@ function createViewer(container) {
   });
   renderer = fullScreenRenderWindow.getRenderer();
   renderWindow = fullScreenRenderWindow.getRenderWindow();
+  xrRenderWindowHelper = vtkWebXRRenderWindowHelper.newInstance({
+    renderWindow: fullScreenRenderWindow.getApiSpecificRenderWindow(),
+  });
   renderWindow.getInteractor().setDesiredUpdateRate(15);
 
   container.appendChild(rootControllerContainer);
@@ -197,7 +241,10 @@ function createPipeline(fileName, fileContents) {
 
   const immersionSelector = document.createElement('button');
   immersionSelector.setAttribute('class', selectorClass);
-  immersionSelector.innerHTML = 'Start AR';
+  immersionSelector.innerHTML =
+    requestedXrSessionType === XrSessionTypes.MobileAR
+      ? 'Start AR'
+      : 'Start VR';
 
   const controlContainer = document.createElement('div');
   controlContainer.setAttribute('class', style.control);
@@ -210,8 +257,8 @@ function createPipeline(fileName, fileContents) {
 
   if (
     navigator.xr !== undefined &&
-    navigator.xr.isSessionSupported('immersive-ar') &&
-    fullScreenRenderWindow.getApiSpecificRenderWindow().getXrSupported()
+    xrRenderWindowHelper.getXrSupported() &&
+    requestedXrSessionType !== null
   ) {
     controlContainer.appendChild(immersionSelector);
   }
@@ -330,12 +377,15 @@ function createPipeline(fileName, fileContents) {
           lut.setVectorModeToMagnitude();
         }
         componentSelector.style.display = 'block';
-        const compOpts = ['Magnitude'];
+        const compOpts = [['Magnitude', -1]];
         while (compOpts.length <= numberOfComponents) {
-          compOpts.push(`Component ${compOpts.length}`);
+          compOpts.push([`Component ${compOpts.length}`, compOpts.length - 1]);
+        }
+        if (numberOfComponents === 3 || numberOfComponents === 4) {
+          compOpts.push([`Use direct mapping`, -2]);
         }
         componentSelector.innerHTML = compOpts
-          .map((t, index) => `<option value="${index - 1}">${t}</option>`)
+          .map((t) => `<option value="${t[1]}">${t[0]}</option>`)
           .join('');
       } else {
         componentSelector.style.display = 'none';
@@ -361,7 +411,10 @@ function createPipeline(fileName, fileContents) {
   function updateColorByComponent(event) {
     if (mapper.getLookupTable()) {
       const lut = mapper.getLookupTable();
-      if (event.target.value === -1) {
+      mapper.setColorModeToMapScalars();
+      if (event.target.value === '-2') {
+        mapper.setColorModeToDirectScalars();
+      } else if (event.target.value === '-1') {
         lut.setVectorModeToMagnitude();
       } else {
         lut.setVectorModeToComponent();
@@ -381,21 +434,26 @@ function createPipeline(fileName, fileContents) {
   // Immersion handling
   // --------------------------------------------------------------------
 
-  function toggleAR() {
-    const SESSION_IS_AR = true;
-    if (immersionSelector.textContent === 'Start AR') {
-      fullScreenRenderWindow.setBackground([...background, 0]);
-      fullScreenRenderWindow
-        .getApiSpecificRenderWindow()
-        .startXR(SESSION_IS_AR);
-      immersionSelector.textContent = 'Exit AR';
+  function toggleXR() {
+    if (immersionSelector.textContent.startsWith('Start')) {
+      xrRenderWindowHelper.startXR(requestedXrSessionType);
+      immersionSelector.textContent = [
+        XrSessionTypes.HmdAR,
+        XrSessionTypes.MobileAR,
+      ].includes(requestedXrSessionType)
+        ? 'Exit AR'
+        : 'Exit VR';
     } else {
-      fullScreenRenderWindow.setBackground([...background, 255]);
-      fullScreenRenderWindow.getApiSpecificRenderWindow().stopXR(SESSION_IS_AR);
-      immersionSelector.textContent = 'Start AR';
+      xrRenderWindowHelper.stopXR();
+      immersionSelector.textContent = [
+        XrSessionTypes.HmdAR,
+        XrSessionTypes.MobileAR,
+      ].includes(requestedXrSessionType)
+        ? 'Start AR'
+        : 'Start VR';
     }
   }
-  immersionSelector.addEventListener('click', toggleAR);
+  immersionSelector.addEventListener('click', toggleXR);
 
   // --------------------------------------------------------------------
   // Pipeline handling

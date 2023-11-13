@@ -217,7 +217,10 @@ function vtkColorTransferFunction(publicAPI, model) {
       const before = JSON.stringify(model.nodes);
       model.nodes = nodes;
       const after = JSON.stringify(model.nodes);
-      return publicAPI.sortAndUpdateRange() || before !== after;
+      if (publicAPI.sortAndUpdateRange() || before !== after) {
+        publicAPI.modified();
+        return true;
+      }
     }
     return false;
   };
@@ -386,13 +389,17 @@ function vtkColorTransferFunction(publicAPI, model) {
       // todo
       const idx = publicAPI.getAnnotatedValueIndexInternal(x);
       if (idx < 0 || numNodes === 0) {
-        publicAPI.getNanColor(rgb);
+        const nanColor = publicAPI.getNanColorByReference();
+        rgb[0] = nanColor[0];
+        rgb[1] = nanColor[1];
+        rgb[2] = nanColor[2];
       } else {
         const nodeVal = [];
         publicAPI.getNodeValue(idx % numNodes, nodeVal);
-        rgb[0] = nodeVal.r;
-        rgb[1] = nodeVal.g;
-        rgb[2] = nodeVal.b;
+        // nodeVal[0] is the x value. nodeVal[1...3] is rgb.
+        rgb[0] = nodeVal[1];
+        rgb[1] = nodeVal[2];
+        rgb[2] = nodeVal[3];
       }
       return;
     }
@@ -425,7 +432,11 @@ function vtkColorTransferFunction(publicAPI, model) {
 
   //----------------------------------------------------------------------------
   // Returns a table of RGB colors at regular intervals along the function
-  publicAPI.getTable = (xStart, xEnd, size, table) => {
+  publicAPI.getTable = (xStart_, xEnd_, size, table) => {
+    // To handle BigInt limitation
+    const xStart = Number(xStart_);
+    const xEnd = Number(xEnd_);
+
     // Special case: If either the start or end is a NaN, then all any
     // interpolation done on them is also a NaN.  Therefore, fill the table with
     // the NaN color.
@@ -868,6 +879,63 @@ function vtkColorTransferFunction(publicAPI, model) {
     return model.table;
   };
 
+  publicAPI.buildFunctionFromArray = (array) => {
+    publicAPI.removeAllPoints();
+    const numComponents = array.getNumberOfComponents();
+    for (let i = 0; i < array.getNumberOfTuples(); i++) {
+      switch (numComponents) {
+        case 3: {
+          model.nodes.push({
+            x: i,
+            r: array.getComponent(i, 0),
+            g: array.getComponent(i, 1),
+            b: array.getComponent(i, 2),
+            midpoint: 0.5,
+            sharpness: 0.0,
+          });
+          break;
+        }
+        case 4: {
+          model.nodes.push({
+            x: array.getComponent(i, 0),
+            r: array.getComponent(i, 1),
+            g: array.getComponent(i, 2),
+            b: array.getComponent(i, 3),
+            midpoint: 0.5,
+            sharpness: 0.0,
+          });
+          break;
+        }
+        case 5: {
+          model.nodes.push({
+            x: i,
+            r: array.getComponent(i, 0),
+            g: array.getComponent(i, 1),
+            b: array.getComponent(i, 2),
+            midpoint: array.getComponent(i, 4),
+            sharpness: array.getComponent(i, 5),
+          });
+          break;
+        }
+        case 6: {
+          model.nodes.push({
+            x: array.getComponent(i, 0),
+            r: array.getComponent(i, 1),
+            g: array.getComponent(i, 2),
+            b: array.getComponent(i, 3),
+            midpoint: array.getComponent(i, 4),
+            sharpness: array.getComponent(i, 5),
+          });
+          break;
+        }
+        default: {
+          break;
+        }
+      }
+    }
+    publicAPI.sortAndUpdateRange();
+  };
+
   //----------------------------------------------------------------------------
   publicAPI.buildFunctionFromTable = (xStart, xEnd, size, table) => {
     let inc = 0.0;
@@ -966,7 +1034,10 @@ function vtkColorTransferFunction(publicAPI, model) {
       rgba[3] = 1.0; // NodeColor is RGB-only.
       return;
     }
-    publicAPI.getNanColor(rgba);
+    const nanColor = publicAPI.getNanColorByReference();
+    rgba[0] = nanColor[0];
+    rgba[1] = nanColor[1];
+    rgba[2] = nanColor[2];
     rgba[3] = 1.0; // NanColor is RGB-only.
   };
 
@@ -1149,6 +1220,7 @@ function vtkColorTransferFunction(publicAPI, model) {
 
   //----------------------------------------------------------------------------
   publicAPI.applyColorMap = (colorMap) => {
+    const oldColorSpace = JSON.stringify(model.colorSpace);
     if (colorMap.ColorSpace) {
       model.colorSpace = ColorSpace[colorMap.ColorSpace.toUpperCase()];
       if (model.colorSpace === undefined) {
@@ -1158,12 +1230,18 @@ function vtkColorTransferFunction(publicAPI, model) {
         model.colorSpace = ColorSpace.RGB;
       }
     }
+    let isModified = oldColorSpace !== JSON.stringify(model.colorSpace);
+
+    const oldNanColor = isModified || JSON.stringify(model.nanColor);
     if (colorMap.NanColor) {
       model.nanColor = [].concat(colorMap.NanColor);
       while (model.nanColor.length < 4) {
         model.nanColor.push(1.0);
       }
     }
+    isModified = isModified || oldNanColor !== JSON.stringify(model.nanColor);
+
+    const oldNodes = isModified || JSON.stringify(model.nodes);
     if (colorMap.RGBPoints) {
       const size = colorMap.RGBPoints.length;
       model.nodes = [];
@@ -1180,13 +1258,15 @@ function vtkColorTransferFunction(publicAPI, model) {
         });
       }
     }
-    // FIXME: not supported ?
-    // if (colorMap.IndexedColors) {
-    // }
-    // if (colorMap.Annotations) {
-    // }
 
-    publicAPI.sortAndUpdateRange();
+    const modifiedInvoked = publicAPI.sortAndUpdateRange();
+
+    const callModified =
+      !modifiedInvoked &&
+      (isModified || oldNodes !== JSON.stringify(model.nodes));
+    if (callModified) publicAPI.modified();
+
+    return modifiedInvoked || callModified;
   };
 }
 

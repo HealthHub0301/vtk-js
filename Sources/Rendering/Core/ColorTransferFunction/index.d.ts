@@ -1,19 +1,9 @@
-import { vtkObject } from '../../../interfaces';
+import vtkDataArray from '../../../Common/Core/DataArray';
+import vtkScalarsToColors from '../../../Common/Core/ScalarsToColors'
+import { ColorSpace, Scale } from "./Constants";
 
-export enum ColorSpace {
-  RGB,
-  HSV,
-  LAB,
-  DIVERGING,
-}
 
-export enum Scale {
-  LINEAR,
-  LOG10,
-}
-
-/* TODO: use VtkScalarsToColors instead of VtkObject */
-export interface vtkColorTransferFunction extends vtkObject {
+export interface vtkColorTransferFunction extends vtkScalarsToColors {
   /**
    * Add a point defined in RGB
    * @param {Number} x The index of the point.
@@ -212,6 +202,25 @@ export interface vtkColorTransferFunction extends vtkObject {
   ): Float32Array;
 
   /**
+   * Construct a color transfer function from a vtkDataArray.
+   * The order of values depends on the number of components
+   * of the array.
+   * 3 -> RGB
+   * 4 -> XRGB
+   * 5 -> RGBMS
+   * 6 -> XRGBMS
+   * 
+   * X represents the input value to a function
+   * RGB represents the red, green, and blue value output
+   * M represents the midpoint
+   * S represents sharpness
+   * @param {vtkDataArray} array
+   */
+   buildFunctionFromArray(
+    array: vtkDataArray,
+  ): void;
+
+  /**
    * Construct a color transfer function from a table.
    * @param {Number} xStart The index of the first point.
    * @param {Number} xEnd The index of the first point.
@@ -259,13 +268,6 @@ export interface vtkColorTransferFunction extends vtkObject {
    * @param ptr
    */
   fillFromDataPointer(nb: number, ptr: any): void;
-
-  /**
-   * Set the range of scalars being mapped.
-   * @param {Number} min
-   * @param {Number} max
-   */
-  setMappingRange(min: number, max: number): void;
 
   /**
    * Remove all points out of the new range, and make sure there is a point at
@@ -358,5 +360,7 @@ export function newInstance(initialValues?: object): vtkColorTransferFunction;
 export declare const vtkColorTransferFunction: {
   newInstance: typeof newInstance;
   extend: typeof extend;
+  ColorSpace: typeof ColorSpace;
+  Scale: typeof Scale;
 };
 export default vtkColorTransferFunction;

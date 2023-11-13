@@ -11,7 +11,7 @@ const ESLintWebpackPlugin = require('eslint-webpack-plugin');
 const pkg = require('./package.json');
 const settings = require('./webpack.settings.js');
 
-const absolutifyImports = require('./Utilities/build/absolutify-imports.js');
+const absolutifyImports = require('./Utilities/build/rewrite-imports.js');
 
 // basic regex for matching imports
 const importRegex = /(?:import|from) ['"]([^'"]*)['"]/g;
@@ -42,7 +42,9 @@ function configureVtkRules() {
         {
           loader: 'babel-loader',
           options: {
-            presets: ['@babel/preset-env'],
+            presets: [
+              ['@babel/preset-env', { ignoreBrowserslistConfig: true }],
+            ],
           },
         },
       ],

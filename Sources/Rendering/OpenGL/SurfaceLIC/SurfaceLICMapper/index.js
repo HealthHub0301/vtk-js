@@ -32,8 +32,8 @@ function vtkOpenGLSurfaceLICMapper(publicAPI, model) {
     if (array && model.canDrawLIC) {
       FSSource = vtkShaderProgram.substitute(FSSource, '//VTK::Output::Dec', [
         '//VTK::Output::Dec',
-        'layout(location = 1) out vec4 vectorTexture;',
-        'layout(location = 2) out vec4 maskVectorTexture;',
+        'layout(location = 2) out vec4 vectorTexture;',
+        'layout(location = 3) out vec4 maskVectorTexture;',
       ]).result;
 
       const arrayName = array.getName();
@@ -140,7 +140,7 @@ function vtkOpenGLSurfaceLICMapper(publicAPI, model) {
   publicAPI.renderPiece = (ren, actor) => {
     let canDrawLIC = true;
     // Check for gl compatibility
-    const gl2 = model.openGLRenderWindow.getWebgl2();
+    const gl2 = model._openGLRenderWindow.getWebgl2();
     if (!gl2) {
       vtkErrorMacro('SurfaceLICMapper Requires WebGL 2');
       canDrawLIC = false;
@@ -208,22 +208,22 @@ function vtkOpenGLSurfaceLICMapper(publicAPI, model) {
     const backfaceCulling = actor.getProperty().getBackfaceCulling();
     const frontfaceCulling = actor.getProperty().getFrontfaceCulling();
     if (!backfaceCulling && !frontfaceCulling) {
-      model.openGLRenderWindow.disableCullFace();
+      model._openGLRenderWindow.disableCullFace();
     } else if (frontfaceCulling) {
-      model.openGLRenderWindow.enableCullFace();
+      model._openGLRenderWindow.enableCullFace();
       gl.cullFace(gl.FRONT);
     } else {
-      model.openGLRenderWindow.enableCullFace();
+      model._openGLRenderWindow.enableCullFace();
       gl.cullFace(gl.BACK);
     }
 
-    const windowSize = model.openGLRenderWindow.getSize();
+    const windowSize = model._openGLRenderWindow.getSize();
     const size = windowSize.map((i) =>
       Math.round(i * licInterface.getViewPortScale())
     );
 
     model.openGLLicInterface.setSize(size);
-    model.openGLLicInterface.setOpenGLRenderWindow(model.openGLRenderWindow);
+    model.openGLLicInterface.setOpenGLRenderWindow(model._openGLRenderWindow);
     model.openGLLicInterface.setContext(model.context);
 
     // Pre-render
