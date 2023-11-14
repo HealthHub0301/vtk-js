@@ -1,19 +1,8 @@
-import { vtkObject } from "../../../interfaces" ;
-import { ColorMode } from "../../../Rendering/Core/Mapper";
-import { Range } from "../../../types" ;
-
-export enum VectorMode {
-	MAGNITUDE,
-	COMPONENT,
-	RGBCOLORS
-}
-
-export enum ScalarMappingTarget {
-	LUMINANCE,
-	LUMINANCE_ALPHA,
-	RGB,
-	RGBA
-}
+import { vtkObject } from "../../../interfaces";
+import { ColorMode } from "../../../Rendering/Core/Mapper/Constants";
+import { Range } from "../../../types";
+import vtkDataArray from "../DataArray";
+import { ScalarMappingTarget, VectorMode } from "./Constants";
 
 /**
  *
@@ -117,10 +106,8 @@ export interface vtkScalarsToColors extends vtkObject {
 
 	/**
 	 * 
-	 * @param {Number} min 
-	 * @param {Number} max 
 	 */
-	getRange(min: number, max: number): Range;
+	getRange(): Range;
 
 	/**
 	 * Get which component of a vector to map to colors.
@@ -138,9 +125,23 @@ export interface vtkScalarsToColors extends vtkObject {
 	getVectorSize(): number;
 
 	/**
-	 * 
+	 * @see areScalarsOpaque
 	 */
 	isOpaque(): boolean;
+
+	/**
+	 * Returns false if scalars are Uint8 LA or RGBA with A < 255,
+	 * otherwise rely on getAlpha() in case of direct mapping,
+	 * otherwise return isOpaque()
+	 * 
+	 * @see isOpaque, getAlpha
+	 * 
+	 * @param {vtkDataArray} scalars 
+	 * @param {ColorMode} colorMode 
+	 * @param {Number} componentIn 
+	 * 
+	 */
+	areScalarsOpaque(scalars: vtkDataArray, colorMode: ColorMode, componentIn: number): boolean;
 
 	/**
 	 * 
@@ -370,5 +371,7 @@ export function newInstance(initialValues?: IScalarsToColorsInitialValues): vtkS
 export declare const vtkScalarsToColors: {
 	newInstance: typeof newInstance;
 	extend: typeof extend;
+	VectorMode: typeof VectorMode;
+	ScalarMappingTarget: typeof VectorMode;
 }
 export default vtkScalarsToColors;

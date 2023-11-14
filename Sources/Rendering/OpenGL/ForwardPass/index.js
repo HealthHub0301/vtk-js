@@ -1,6 +1,7 @@
 import macro from 'vtk.js/Sources/macros';
 import vtkOpenGLFramebuffer from 'vtk.js/Sources/Rendering/OpenGL/Framebuffer';
 import vtkRenderPass from 'vtk.js/Sources/Rendering/SceneGraph/RenderPass';
+import vtkOpenGLOrderIndependentTranslucentPass from 'vtk.js/Sources/Rendering/OpenGL/OrderIndependentTranslucentPass';
 
 // ----------------------------------------------------------------------------
 
@@ -18,7 +19,7 @@ function vtkForwardPass(publicAPI, model) {
     }
 
     // we just render our delegates in order
-    model.currentParent = parent;
+    model._currentParent = parent;
 
     // build
     publicAPI.setCurrentOperation('buildPass');
@@ -45,7 +46,8 @@ function vtkForwardPass(publicAPI, model) {
 
           // do we need to capture a zbuffer?
           if (
-            (model.opaqueActorCount > 0 && model.volumeCount > 0) ||
+            ((model.opaqueActorCount > 0 || model.translucentActorCount > 0) &&
+              model.volumeCount > 0) ||
             model.depthRequested
           ) {
             const size = viewNode.getFramebufferSize();
@@ -65,7 +67,10 @@ function vtkForwardPass(publicAPI, model) {
               model.framebuffer.populateFramebuffer();
             }
             model.framebuffer.bind();
-            publicAPI.setCurrentOperation('opaqueZBufferPass');
+            // opaqueZBufferPass only renders opaque actors
+            // zBufferPass renders both translucent and opaque actors
+            // we want to be able to pick translucent actors
+            publicAPI.setCurrentOperation('zBufferPass');
             renNode.traverse(publicAPI);
             model.framebuffer.restorePreviousBindingsAndBuffers();
 
@@ -80,8 +85,11 @@ function vtkForwardPass(publicAPI, model) {
             renNode.traverse(publicAPI);
           }
           if (model.translucentActorCount > 0) {
-            publicAPI.setCurrentOperation('translucentPass');
-            renNode.traverse(publicAPI);
+            if (!model.translucentPass) {
+              model.translucentPass =
+                vtkOpenGLOrderIndependentTranslucentPass.newInstance();
+            }
+            model.translucentPass.traverse(viewNode, renNode, publicAPI);
           }
           if (model.volumeCount > 0) {
             publicAPI.setCurrentOperation('volumePass');
@@ -135,7 +143,12 @@ export function extend(publicAPI, model, initialValues = {}) {
   // Build VTK API
   vtkRenderPass.extend(publicAPI, model, initialValues);
 
-  macro.get(publicAPI, model, ['framebuffer']);
+  macro.get(publicAPI, model, [
+    'framebuffer',
+    'opaqueActorCount',
+    'translucentActorCount',
+    'volumeCount',
+  ]);
 
   // Object methods
   vtkForwardPass(publicAPI, model);

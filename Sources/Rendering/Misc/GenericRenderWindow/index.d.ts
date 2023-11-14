@@ -1,16 +1,17 @@
 import { vtkObject, vtkSubscription } from "../../../interfaces";
-import { RGBColor } from "../../../types";
+import { RGBAColor, RGBColor } from "../../../types";
 import vtkRenderer from "../../Core/Renderer";
 import vtkRenderWindow from "../../Core/RenderWindow";
 import vtkRenderWindowInteractor from "../../Core/RenderWindowInteractor";
 import vtkOpenGLRenderWindow from "../../OpenGL/RenderWindow";
+import vtkWebGPURenderWindow from "../../WebGPU/RenderWindow";
 
 
 /**
  *
  */
 export interface IGenericRenderWindowInitialValues {
-	background?: RGBColor;
+	background?: RGBColor|RGBAColor;
 	listenWindowResize?: boolean;
 	container?: HTMLElement,
 }
@@ -33,9 +34,9 @@ export interface vtkGenericRenderWindow extends vtkObject {
 	getInteractor(): vtkRenderWindowInteractor;
 
 	/**
-	 * 
+	 * Get the render back-end specific render window.
 	 */
-	getOpenGLRenderWindow(): vtkOpenGLRenderWindow;
+	getApiSpecificRenderWindow(): vtkOpenGLRenderWindow|vtkWebGPURenderWindow;
 
 	/**
 	 * 
@@ -62,9 +63,10 @@ export interface vtkGenericRenderWindow extends vtkObject {
 
 	/**
 	 * Set background color
-	 * @param {RGBColor} background The background color.
+	 * @param {RGBColor|RGBAColor} background The background color.
+	 * @returns true if the background color actually changed, false otherwise
 	 */
-	setBackground(background: RGBColor): boolean;
+	setBackground(background: RGBColor|RGBAColor): boolean;
 
 	/**
 	 * Set thecontainer element

@@ -1,17 +1,7 @@
-import { Bounds } from "../../../types";
+import { Bounds, Nullable, vtkPipelineConnection } from "../../../types";
 import vtkMapper, { IMapperInitialValues } from "../Mapper";
+import { OrientationModes, ScaleModes } from "./Constants";
 
-export enum OrientationModes {
-	DIRECTION,
-	ROTATION,
-	MATRIX,
-}
-
-export enum ScaleModes {
-	SCALE_BY_CONSTANT,
-	SCALE_BY_MAGNITUDE,
-	SCALE_BY_COMPONENTS,
-}
 
 interface IPrimitiveCount {
 	points: number;
@@ -98,6 +88,12 @@ export interface vtkGlyph3DMapper extends vtkMapper {
 	getPrimitiveCount(): IPrimitiveCount;
 
 	/**
+	 * Sets the name of the array to use as orientation.
+	 * @param {String} arrayName Name of the array
+	 */
+	setOrientationArray(arrayName: Nullable<string>): boolean;
+
+	/**
 	 * Orientation mode indicates if the OrientationArray provides the direction 
 	 * vector for the orientation or the rotations around each axes.
 	 * @param {OrientationModes} orientationMode The orientation mode.
@@ -148,6 +144,13 @@ export interface vtkGlyph3DMapper extends vtkMapper {
 	 * Set scale to `SCALE_BY_CONSTANT`
 	 */
 	setScaleModeToScaleByConstant(): boolean;
+
+	/**
+	 * Convenient method to set the source glyph connection
+	 * @param {vtkPipelineConnection} outputPort The output port of the glyph source.
+	 */
+	setSourceConnection(outputPort: vtkPipelineConnection): void;
+
 }
 
 /**
@@ -168,5 +171,7 @@ export function newInstance(initialValues?: IGlyph3DMapperInitialValues): vtkGly
 export declare const vtkGlyph3DMapper: {
 	newInstance: typeof newInstance;
 	extend: typeof extend;
+	OrientationModes: typeof OrientationModes;
+	ScaleModes: typeof ScaleModes;
 }
 export default vtkGlyph3DMapper;

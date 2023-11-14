@@ -1,18 +1,18 @@
-import 'vtk.js/Sources/favicon';
+import '@kitware/vtk.js/favicon';
 
 // Load the rendering pieces we want to use (for both WebGL and WebGPU)
-import 'vtk.js/Sources/Rendering/Profiles/Geometry';
-import 'vtk.js/Sources/Rendering/Profiles/Molecule'; // for vtkSphereMapper
+import '@kitware/vtk.js/Rendering/Profiles/Geometry';
+import '@kitware/vtk.js/Rendering/Profiles/Molecule'; // for vtkSphereMapper
 
-import vtkActor from 'vtk.js/Sources/Rendering/Core/Actor';
-import vtkConeSource from 'vtk.js/Sources/Filters/Sources/ConeSource';
-import vtkSphereMapper from 'vtk.js/Sources/Rendering/Core/SphereMapper';
-import vtkOpenGLRenderWindow from 'vtk.js/Sources/Rendering/OpenGL/RenderWindow';
-import vtkPixelSpaceCallbackMapper from 'vtk.js/Sources/Rendering/Core/PixelSpaceCallbackMapper';
-import vtkRenderWindow from 'vtk.js/Sources/Rendering/Core/RenderWindow';
-import vtkRenderWindowInteractor from 'vtk.js/Sources/Rendering/Core/RenderWindowInteractor';
-import vtkRenderer from 'vtk.js/Sources/Rendering/Core/Renderer';
-import vtkInteractorStyleTrackballCamera from 'vtk.js/Sources/Interaction/Style/InteractorStyleTrackballCamera';
+import vtkActor from '@kitware/vtk.js/Rendering/Core/Actor';
+import vtkConeSource from '@kitware/vtk.js/Filters/Sources/ConeSource';
+import vtkSphereMapper from '@kitware/vtk.js/Rendering/Core/SphereMapper';
+import vtkOpenGLRenderWindow from '@kitware/vtk.js/Rendering/OpenGL/RenderWindow';
+import vtkPixelSpaceCallbackMapper from '@kitware/vtk.js/Rendering/Core/PixelSpaceCallbackMapper';
+import vtkRenderWindow from '@kitware/vtk.js/Rendering/Core/RenderWindow';
+import vtkRenderWindowInteractor from '@kitware/vtk.js/Rendering/Core/RenderWindowInteractor';
+import vtkRenderer from '@kitware/vtk.js/Rendering/Core/Renderer';
+import vtkInteractorStyleTrackballCamera from '@kitware/vtk.js/Interaction/Style/InteractorStyleTrackballCamera';
 
 import style from './style.module.css';
 
@@ -68,8 +68,8 @@ renderer.resetCamera();
 // Use OpenGL as the backend to view the all this
 // ----------------------------------------------------------------------------
 
-const openglRenderWindow = vtkOpenGLRenderWindow.newInstance();
-renderWindow.addView(openglRenderWindow);
+const openGLRenderWindow = vtkOpenGLRenderWindow.newInstance();
+renderWindow.addView(openGLRenderWindow);
 
 // ----------------------------------------------------------------------------
 // Create a div section to put this into
@@ -78,7 +78,7 @@ renderWindow.addView(openglRenderWindow);
 const container = document.createElement('div');
 container.classList.add(style.container);
 document.querySelector('body').appendChild(container);
-openglRenderWindow.setContainer(container);
+openGLRenderWindow.setContainer(container);
 
 const textCanvas = document.createElement('canvas');
 textCanvas.classList.add(style.container, 'textCanvas');
@@ -91,7 +91,7 @@ textCtx = textCanvas.getContext('2d');
 // ----------------------------------------------------------------------------
 
 const interactor = vtkRenderWindowInteractor.newInstance();
-interactor.setView(openglRenderWindow);
+interactor.setView(openGLRenderWindow);
 interactor.initialize();
 interactor.bindEvents(container);
 
@@ -100,7 +100,7 @@ interactor.setInteractorStyle(vtkInteractorStyleTrackballCamera.newInstance());
 // Handle window resize
 function resize() {
   dims = container.getBoundingClientRect();
-  openglRenderWindow.setSize(dims.width, dims.height);
+  openGLRenderWindow.setSize(dims.width, dims.height);
   textCanvas.setAttribute('width', dims.width);
   textCanvas.setAttribute('height', dims.height);
   renderWindow.render();

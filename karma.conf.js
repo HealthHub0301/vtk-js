@@ -1,9 +1,8 @@
-/* eslint-disable global-require */
 const path = require('path');
 
 const webpack = require('webpack');
-const testsRules = require('./Utilities/config/rules-tests');
 const ESLintPlugin = require('eslint-webpack-plugin');
+const testsRules = require('./Utilities/config/rules-tests');
 
 const sourcePath = path.join(__dirname, './Sources');
 
@@ -24,14 +23,18 @@ module.exports = function init(config) {
     basePath: '',
     frameworks: ['tape-object-stream', 'webpack'],
     files: [
-      'Sources/Testing/setupTestEnv.js',
-      'Sources/**/test*.js',
+      'Sources/Testing/index.js',
+      {
+        pattern: 'Sources/**/*.js',
+        watched: true,
+        served: false,
+        included: false,
+      },
       { pattern: 'Data/**', watched: false, served: true, included: false },
     ],
 
     preprocessors: {
-      'Sources/Testing/setupTestEnv.js': ['webpack'],
-      'Sources/**/test*.js': ['webpack'],
+      'Sources/Testing/index.js': ['webpack'],
     },
 
     webpack: {
@@ -52,7 +55,7 @@ module.exports = function init(config) {
         },
       },
       plugins: [
-	new ESLintPlugin(),
+        new ESLintPlugin(),
         new webpack.DefinePlugin({
           __BASE_PATH__: "'/base'",
         }),
@@ -91,7 +94,8 @@ module.exports = function init(config) {
       },
     },
     // browserNoActivityTimeout: 600000,
-    // browserDisconnectTimeout: 600000,
+    browserDisconnectTimeout: 100000,
+    browserDisconnectTolerance: 3,
 
     port: 9876,
     colors: true,

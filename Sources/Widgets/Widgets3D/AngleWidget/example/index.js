@@ -1,15 +1,15 @@
-import 'vtk.js/Sources/favicon';
+import '@kitware/vtk.js/favicon';
 
 // Load the rendering pieces we want to use (for both WebGL and WebGPU)
-import 'vtk.js/Sources/Rendering/Profiles/Geometry';
-import 'vtk.js/Sources/Rendering/Profiles/Glyph';
+import '@kitware/vtk.js/Rendering/Profiles/Geometry';
+import '@kitware/vtk.js/Rendering/Profiles/Glyph';
 
-import vtkActor from 'vtk.js/Sources/Rendering/Core/Actor';
-import vtkCubeSource from 'vtk.js/Sources/Filters/Sources/CubeSource';
-import vtkFullScreenRenderWindow from 'vtk.js/Sources/Rendering/Misc/FullScreenRenderWindow';
-import vtkMapper from 'vtk.js/Sources/Rendering/Core/Mapper';
-import vtkAngleWidget from 'vtk.js/Sources/Widgets/Widgets3D/AngleWidget';
-import vtkWidgetManager from 'vtk.js/Sources/Widgets/Core/WidgetManager';
+import vtkActor from '@kitware/vtk.js/Rendering/Core/Actor';
+import vtkCubeSource from '@kitware/vtk.js/Filters/Sources/CubeSource';
+import vtkFullScreenRenderWindow from '@kitware/vtk.js/Rendering/Misc/FullScreenRenderWindow';
+import vtkMapper from '@kitware/vtk.js/Rendering/Core/Mapper';
+import vtkAngleWidget from '@kitware/vtk.js/Widgets/Widgets3D/AngleWidget';
+import vtkWidgetManager from '@kitware/vtk.js/Widgets/Core/WidgetManager';
 
 import controlPanel from './controlPanel.html';
 
@@ -22,12 +22,12 @@ const fullScreenRenderer = vtkFullScreenRenderWindow.newInstance({
 });
 const renderer = fullScreenRenderer.getRenderer();
 
-const cone = vtkCubeSource.newInstance();
+const cube = vtkCubeSource.newInstance();
 const mapper = vtkMapper.newInstance();
 const actor = vtkActor.newInstance();
 
 actor.setMapper(mapper);
-mapper.setInputConnection(cone.getOutputPort());
+mapper.setInputConnection(cube.getOutputPort());
 actor.getProperty().setOpacity(0.5);
 
 renderer.addActor(actor);
@@ -40,12 +40,13 @@ const widgetManager = vtkWidgetManager.newInstance();
 widgetManager.setRenderer(renderer);
 
 const widget = vtkAngleWidget.newInstance();
-widget.placeWidget(cone.getOutputData().getBounds());
+// widget.placeWidget(cube.getOutputData().getBounds());
 
 widgetManager.addWidget(widget);
 
 renderer.resetCamera();
 widgetManager.enablePicking();
+fullScreenRenderer.getInteractor().render();
 
 // -----------------------------------------------------------
 // UI control handling

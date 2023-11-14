@@ -17,11 +17,12 @@ import svgo from 'rollup-plugin-svgo';
 import webworkerLoader from 'rollup-plugin-web-worker-loader';
 import copy from 'rollup-plugin-copy';
 
-import pkg from './package.json';
+import pkgJSON from './package.json';
 
 import { rewriteFilenames } from './Utilities/rollup/plugin-rewrite-filenames';
+import { generateDtsReferences } from './Utilities/rollup/plugin-generate-references';
 
-const absolutifyImports = require('./Utilities/build/absolutify-imports.js');
+const relatifyImports = require('./Utilities/build/rewrite-imports');
 
 const IGNORE_LIST = [
   /[/\\]example_?[/\\]/,
@@ -55,8 +56,8 @@ entryPoints.forEach((entry) => {
 
 const outputDir = path.resolve('dist', 'esm');
 
-const dependencies = Object.keys(pkg.dependencies || []);
-const peerDependencies = Object.keys(pkg.peerDependencies || []);
+const dependencies = Object.keys(pkgJSON.dependencies || []);
+const peerDependencies = Object.keys(pkgJSON.peerDependencies || []);
 
 export default {
   input: entries,
@@ -105,9 +106,7 @@ export default {
   ],
   plugins: [
     alias({
-      entries: [
-        { find: 'vtk.js', replacement: path.resolve(__dirname) },
-      ],
+      entries: [{ find: 'vtk.js', replacement: path.resolve(__dirname) }],
     }),
     // ignore crypto module
     ignore(['crypto']),
@@ -169,7 +168,10 @@ export default {
           dest: outputDir,
           rename(name, ext, fullPath) {
             const filename = `${name}.${ext}`;
-            if (filename === 'index.d.ts') {
+            if (
+              filename === 'index.d.ts' &&
+              path.dirname(fullPath) !== 'Sources'
+            ) {
               const moduleName = path.basename(path.dirname(fullPath));
               return `../${moduleName}.d.ts`;
             }
@@ -178,20 +180,37 @@ export default {
           transform(content, base) {
             // transforms typescript defs to use absolute package imports
             if (base.endsWith('.d.ts')) {
-              return absolutifyImports(content.toString(), (relImport) => {
-                const importPath = path.join(path.dirname(base), relImport);
-                const relativeStart = path.join(__dirname, 'Sources');
-                // rollup builds are for the @kitware/vtk.js package
-                return path.join(
-                  '@kitware/vtk.js',
-                  path.relative(relativeStart, importPath)
-                );
+              return relatifyImports(content.toString(), (relImport) => {
+                let importPath = relImport;
+                const baseName = path.basename(base);
+
+                if (
+                  baseName === 'index.d.ts' &&
+                  path.dirname(base) !== 'Sources' &&
+                  (importPath.startsWith('../') || importPath.startsWith('./'))
+                ) {
+                  // this file will be moved up one folder, so
+                  // all of its relative imports must be adjusted.
+                  const baseDir = path.dirname(base);
+                  const resolvedImportPath = path.resolve(
+                    `${baseDir}/${importPath}`
+                  );
+                  importPath = `./${path.relative(
+                    `${baseDir}/..`,
+                    resolvedImportPath
+                  )}`.replace(/\\/g, '/');
+                }
+
+                return importPath;
               });
             }
             return content;
           },
         },
       ],
+    }),
+    generateDtsReferences({
+      dest: outputDir,
     }),
     copy({
       flatten: true,
@@ -200,10 +219,19 @@ export default {
         { src: 'Utilities/DataGenerator', dest: `${outputDir}/Utilities` },
         { src: 'Utilities/prepare.js', dest: `${outputDir}/Utilities` },
         { src: 'Utilities/config/*', dest: `${outputDir}/Utilities/config` },
-        { src: 'Utilities/build/macro-shim.d.ts', dest: outputDir, rename: 'macro.d.ts' },
-        { src: 'Utilities/build/macro-shim.js', dest: outputDir, rename: 'macro.js' },
+        {
+          src: 'Utilities/build/macro-shim.d.ts',
+          dest: outputDir,
+          rename: 'macro.d.ts',
+        },
+        {
+          src: 'Utilities/build/macro-shim.js',
+          dest: outputDir,
+          rename: 'macro.js',
+        },
         { src: '*.txt', dest: outputDir },
         { src: '*.md', dest: outputDir },
+        { src: 'tsconfig.json', dest: outputDir },
         { src: '.npmignore', dest: outputDir },
         { src: 'LICENSE', dest: outputDir },
         {
@@ -214,6 +242,7 @@ export default {
             pkg.name = '@kitware/vtk.js';
             pkg.main = './index.js';
             pkg.module = './index.js';
+            pkg.types = './index.d.ts';
             return JSON.stringify(pkg, null, 2);
           },
         },

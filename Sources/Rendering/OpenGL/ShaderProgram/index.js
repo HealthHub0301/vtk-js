@@ -6,19 +6,23 @@ const { vtkErrorMacro } = macro;
 // perform in place string substitutions, indicate if a substitution was done
 // this is useful for building up shader strings which typically involve
 // lots of string substitutions. Return true if a substitution was done.
-function substitute(source, search, replace, all = true) {
-  const replaceStr = Array.isArray(replace) ? replace.join('\n') : replace;
-  let replaced = false;
-  if (source.search(search) !== -1) {
-    replaced = true;
-  }
-  let gflag = '';
-  if (all) {
-    gflag = 'g';
-  }
-  const regex = new RegExp(search, gflag);
-  const resultstr = source.replace(regex, replaceStr);
-  return { replace: replaced, result: resultstr };
+export function substitute(source, search, replace, all) {
+  // We only accept strings or array of strings, typeof is faster than Array.isArray
+  const replaceStr = typeof replace === 'string' ? replace : replace.join('\n');
+
+  // We don't need to instantiate a RegExp if we don't want a global substitution.
+  // In all other cases, we need to take the provided string or RegExp and
+  // instantiate a new one to add the `g` flag.
+  // Argument defaults are transpiled to slow `arguments`-based operations
+  // better assume undefined as flag to know if the value is set or not
+  const replaceSearch = all === false ? search : new RegExp(search, 'g');
+
+  const resultstr = source.replace(replaceSearch, replaceStr);
+  return {
+    // If the result is different than the input, we did perform a replacement
+    replace: resultstr !== replaceStr,
+    result: resultstr,
+  };
 }
 
 // ----------------------------------------------------------------------------
@@ -75,9 +79,18 @@ function vtkShaderProgram(publicAPI, model) {
     if (model.shaderType === 'Unknown' || model.handle === 0) {
       return;
     }
-
-    model.context.deleteShader(model.handle);
+    publicAPI.release();
+    if (model.vertexShaderHandle !== 0) {
+      model.context.detachShader(model.handle, model.vertexShaderHandle);
+      model.vertexShaderHandle = 0;
+    }
+    if (model.fragmentShaderHandle !== 0) {
+      model.context.detachShader(model.handle, model.fragmentShaderHandle);
+      model.fragmentShaderHandle = 0;
+    }
+    model.context.deleteProgram(model.handle);
     model.handle = 0;
+    publicAPI.setCompiled(false);
   };
 
   publicAPI.bind = () => {
@@ -104,7 +117,7 @@ function vtkShaderProgram(publicAPI, model) {
   };
 
   publicAPI.link = () => {
-    if (model.inked) {
+    if (model.linked) {
       return true;
     }
 
@@ -418,8 +431,7 @@ function vtkShaderProgram(publicAPI, model) {
     }
 
     // see if we have cached the result
-    let loc = Object.keys(model.attributeLocs).indexOf(name);
-    if (loc !== -1) {
+    if (name in model.attributeLocs) {
       return true;
     }
 
@@ -430,7 +442,7 @@ function vtkShaderProgram(publicAPI, model) {
       return false;
     }
 
-    loc = model.context.getAttribLocation(model.handle, name);
+    const loc = model.context.getAttribLocation(model.handle, name);
     if (loc === -1) {
       return false;
     }
@@ -461,7 +473,7 @@ function vtkShaderProgram(publicAPI, model) {
 
     if (shader.getShaderType() === 'Vertex') {
       if (model.vertexShaderHandle !== 0) {
-        model.comntext.detachShader(model.handle, model.vertexShaderHandle);
+        model.context.detachShader(model.handle, model.vertexShaderHandle);
       }
       model.vertexShaderHandle = shader.getHandle();
     }

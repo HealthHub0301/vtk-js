@@ -25,9 +25,15 @@ function vtkAngleWidget(publicAPI, model) {
     'useActiveColor',
     'glyphResolution',
     'defaultScale',
+    'scaleInPixels',
   ];
-  model.behavior = widgetBehavior;
-  model.widgetState = stateGenerator();
+
+  model._onManipulatorChanged = () => {
+    model.widgetState.getMoveHandle().setManipulator(model.manipulator);
+    model.widgetState.getHandleList().forEach((handle) => {
+      handle.setManipulator(model.manipulator);
+    });
+  };
 
   publicAPI.getRepresentationsForViewType = (viewType) => {
     switch (viewType) {
@@ -37,8 +43,10 @@ function vtkAngleWidget(publicAPI, model) {
       case ViewTypes.VOLUME:
       default:
         return [
-          { builder: vtkSphereHandleRepresentation, labels: ['handles'] },
-          { builder: vtkSphereHandleRepresentation, labels: ['moveHandle'] },
+          {
+            builder: vtkSphereHandleRepresentation,
+            labels: ['handles', 'moveHandle'],
+          },
           {
             builder: vtkPolyLineRepresentation,
             labels: ['handles', 'moveHandle'],
@@ -83,19 +91,25 @@ function vtkAngleWidget(publicAPI, model) {
   });
 
   // Default manipulator
-  model.manipulator = vtkPlanePointManipulator.newInstance();
+  publicAPI.setManipulator(
+    model.manipulator ||
+      vtkPlanePointManipulator.newInstance({ useCameraNormal: true })
+  );
 }
 
 // ----------------------------------------------------------------------------
 
-const DEFAULT_VALUES = {
+const defaultValues = (initialValues) => ({
   // manipulator: null,
-};
+  behavior: widgetBehavior,
+  widgetState: stateGenerator(),
+  ...initialValues,
+});
 
 // ----------------------------------------------------------------------------
 
 export function extend(publicAPI, model, initialValues = {}) {
-  Object.assign(model, DEFAULT_VALUES, initialValues);
+  Object.assign(model, defaultValues(initialValues));
 
   vtkAbstractWidgetFactory.extend(publicAPI, model, initialValues);
   macro.setGet(publicAPI, model, ['manipulator']);

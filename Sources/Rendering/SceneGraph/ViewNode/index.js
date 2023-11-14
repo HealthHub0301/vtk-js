@@ -61,15 +61,17 @@ function vtkViewNode(publicAPI, model) {
   };
 
   publicAPI.getFirstAncestorOfType = (type) => {
-    if (!model.parent) {
+    if (!model._parent) {
       return null;
     }
-    if (model.parent.isA(type)) {
-      return model.parent;
+    if (model._parent.isA(type)) {
+      return model._parent;
     }
-    return model.parent.getFirstAncestorOfType(type);
+    return model._parent.getFirstAncestorOfType(type);
   };
 
+  // add a missing node/child for the passed in renderables. This should
+  // be called only in between prepareNodes and removeUnusedNodes
   publicAPI.addMissingNode = (dobj) => {
     if (!dobj) {
       return;
@@ -90,6 +92,8 @@ function vtkViewNode(publicAPI, model) {
     }
   };
 
+  // add missing nodes/children for the passed in renderables. This should
+  // be called only in between prepareNodes and removeUnusedNodes
   publicAPI.addMissingNodes = (dataObjs) => {
     if (!dataObjs || !dataObjs.length) {
       return;
@@ -114,6 +118,26 @@ function vtkViewNode(publicAPI, model) {
     }
   };
 
+  // ability to add children that have no renderable use in the same manner
+  // as addMissingNodes This case is when a normal viewnode wants to
+  // delegate passes to a helper or child that doeasn't map to a clear
+  // renderable or any renderable
+  publicAPI.addMissingChildren = (children) => {
+    if (!children || !children.length) {
+      return;
+    }
+
+    for (let index = 0; index < children.length; ++index) {
+      const child = children[index];
+      const cindex = model.children.indexOf(child);
+      if (cindex === -1) {
+        child.setParent(publicAPI);
+        model.children.push(child);
+      }
+      child.setVisited(true);
+    }
+  };
+
   publicAPI.prepareNodes = () => {
     for (let index = 0; index < model.children.length; ++index) {
       model.children[index].setVisited(false);
@@ -125,28 +149,23 @@ function vtkViewNode(publicAPI, model) {
   };
 
   publicAPI.removeUnusedNodes = () => {
-    let deleted = null;
+    let visitedCount = 0;
     for (let index = 0; index < model.children.length; ++index) {
       const child = model.children[index];
       const visited = child.getVisited();
-      if (!visited) {
+      if (visited) {
+        model.children[visitedCount++] = child;
+        child.setVisited(false);
+      } else {
         const renderable = child.getRenderable();
         if (renderable) {
           model._renderableChildMap.delete(renderable);
         }
-        if (!deleted) {
-          deleted = [];
-        }
-        deleted.push(child);
-      } else {
-        child.setVisited(false);
+        child.delete();
       }
     }
 
-    if (deleted) {
-      // slow does alloc but not as common
-      model.children = model.children.filter((el) => !deleted.includes(el));
-    }
+    model.children.length = visitedCount;
   };
 
   publicAPI.createViewNode = (dataObj) => {
@@ -160,6 +179,14 @@ function vtkViewNode(publicAPI, model) {
     }
     return ret;
   };
+
+  const parentDelete = publicAPI.delete;
+  publicAPI.delete = () => {
+    for (let i = 0; i < model.children.length; i++) {
+      model.children[i].delete();
+    }
+    parentDelete();
+  };
 }
 
 // ----------------------------------------------------------------------------
@@ -167,7 +194,7 @@ function vtkViewNode(publicAPI, model) {
 // ----------------------------------------------------------------------------
 
 const DEFAULT_VALUES = {
-  parent: null,
+  // _parent: null,
   renderable: null,
   myFactory: null,
   children: [],
@@ -186,8 +213,9 @@ function extend(publicAPI, model, initialValues = {}) {
   model._renderableChildMap = new Map();
 
   macro.get(publicAPI, model, ['visited']);
-  macro.setGet(publicAPI, model, ['parent', 'renderable', 'myFactory']);
+  macro.setGet(publicAPI, model, ['_parent', 'renderable', 'myFactory']);
   macro.getArray(publicAPI, model, ['children']);
+  macro.moveToProtected(publicAPI, model, ['parent']);
 
   // Object methods
   vtkViewNode(publicAPI, model);

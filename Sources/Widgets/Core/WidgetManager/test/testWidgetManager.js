@@ -9,13 +9,35 @@ import noScaleInPixelsWithPerspectiveBaseline from './testNoScaleInPixelsWithPer
 import noScaleInPixelsWithParallelBaseline from './testNoScaleInPixelsWithParallelBaseline.png';
 
 import scaleInPixelsWithPerspectiveBaseline from './testScaleInPixelsWithPerspectiveBaseline.png';
-// import scaleInPixelsWithParallelBaseline from './testScaleInPixelsWithParallelBaseline.png';
+import scaleInPixelsWithParallelBaseline from './testScaleInPixelsWithParallelBaseline.png';
+
+test('Test vtkWidgetManager', (t) => {
+  const container = document.querySelector('body');
+  const rwContainer = document.createElement('div');
+  container.appendChild(rwContainer);
+  const grw = vtkGenericRenderWindow.newInstance({ listenWindowResize: false });
+  grw.setContainer(rwContainer);
+
+  const widgetManager = vtkWidgetManager.newInstance();
+  widgetManager.setRenderer(grw.getRenderer());
+
+  const widget = vtkPolyLineWidget.newInstance();
+  widgetManager.addWidget(widget);
+  widgetManager.getState();
+  t.end();
+
+  container.removeChild(rwContainer);
+});
 
 test.onlyIfWebGL('Test getPixelWorldHeightAtCoord', (t) => {
   const gc = testUtils.createGarbageCollector(t);
 
   const container = document.querySelector('body');
   const rwContainer = gc.registerDOMElement(document.createElement('div'));
+  // maintain consistent container size across browsers
+  rwContainer.style.width = '300px';
+  rwContainer.style.height = '300px';
+
   container.appendChild(rwContainer);
 
   const grw = vtkGenericRenderWindow.newInstance({ listenWindowResize: false });
@@ -50,7 +72,7 @@ test.onlyIfWebGL('Test getPixelWorldHeightAtCoord', (t) => {
       resolve = res;
     });
     grw
-      .getOpenGLRenderWindow()
+      .getApiSpecificRenderWindow()
       .captureNextImage()
       .then((image) => {
         testUtils.compareImages(
@@ -80,7 +102,7 @@ test.onlyIfWebGL('Test getPixelWorldHeightAtCoord', (t) => {
       resolve = res;
     });
     grw
-      .getOpenGLRenderWindow()
+      .getApiSpecificRenderWindow()
       .captureNextImage()
       .then((image) => {
         testUtils.compareImages(
@@ -110,7 +132,7 @@ test.onlyIfWebGL('Test getPixelWorldHeightAtCoord', (t) => {
       resolve = res;
     });
     grw
-      .getOpenGLRenderWindow()
+      .getApiSpecificRenderWindow()
       .captureNextImage()
       .then((image) => {
         testUtils.compareImages(
@@ -128,10 +150,6 @@ test.onlyIfWebGL('Test getPixelWorldHeightAtCoord', (t) => {
   }
 
   function testScaleInPixelsWithParallel() {
-    t.skip(
-      'testScaleInPixelsWithParallel(): scaleInPixels=true, parallelProjection=true'
-    );
-    /*
     viewWidget.setScaleInPixels(true);
     camera.setParallelProjection(true);
     camera.setParallelScale(100);
@@ -141,7 +159,7 @@ test.onlyIfWebGL('Test getPixelWorldHeightAtCoord', (t) => {
       resolve = res;
     });
     grw
-      .getOpenGLRenderWindow()
+      .getApiSpecificRenderWindow()
       .captureNextImage()
       .then((image) => {
         testUtils.compareImages(
@@ -156,8 +174,6 @@ test.onlyIfWebGL('Test getPixelWorldHeightAtCoord', (t) => {
     // Trigger a next image
     grw.getInteractor().render();
     return promise;
-    */
-    return Promise.resolve();
   }
 
   [

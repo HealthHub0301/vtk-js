@@ -9,6 +9,12 @@ import vtkScalarsToColors from 'vtk.js/Sources/Common/Core/ScalarsToColors/Const
 import CoincidentTopologyHelper from 'vtk.js/Sources/Rendering/Core/Mapper/CoincidentTopologyHelper';
 import Constants from 'vtk.js/Sources/Rendering/Core/Mapper/Constants';
 
+import vtkDataSet from 'vtk.js/Sources/Common/DataModel/DataSet';
+
+import { PassTypes } from 'vtk.js/Sources/Rendering/OpenGL/HardwareSelector/Constants';
+
+const { FieldAssociations } = vtkDataSet;
+
 const { staticOffsetAPI, otherStaticMethods } = CoincidentTopologyHelper;
 
 const { ColorMode, ScalarMode, GetArray } = Constants;
@@ -45,6 +51,13 @@ function vtkMapper(publicAPI, model) {
   publicAPI.setForceCompileOnly = (v) => {
     model.forceCompileOnly = v;
     // make sure we do NOT call modified()
+  };
+
+  publicAPI.setSelectionWebGLIdsToVTKIds = (selectionWebGLIdsToVTKIds) => {
+    model.selectionWebGLIdsToVTKIds = selectionWebGLIdsToVTKIds;
+    // make sure we do NOT call modified()
+    // this attribute is only used when processing a selection made with the hardware selector
+    // the mtime of the mapper doesn't need to be changed
   };
 
   publicAPI.createDefaultLookupTable = () => {
@@ -161,7 +174,11 @@ function vtkMapper(publicAPI, model) {
       if (lut) {
         // Ensure that the lookup table is built
         lut.build();
-        model.colorMapColors = lut.mapScalars(scalars, model.colorMode, -1);
+        model.colorMapColors = lut.mapScalars(
+          scalars,
+          model.colorMode,
+          model.fieldDataTupleId
+        );
       }
     }
     model.colorBuildString = `${publicAPI.getMTime()}${scalars.getMTime()}${alpha}`;
@@ -314,13 +331,16 @@ function vtkMapper(publicAPI, model) {
       if (numberOfColors > 4094) {
         numberOfColors = 4094;
       }
+      if (numberOfColors < 64) {
+        numberOfColors = 64;
+      }
       numberOfColors += 2;
-      const k = (range[1] - range[0]) / (numberOfColors - 1 - 2);
+      const k = (range[1] - range[0]) / (numberOfColors - 2);
 
       const newArray = new Float64Array(numberOfColors * 2);
 
       for (let i = 0; i < numberOfColors; ++i) {
-        newArray[i] = range[0] + i * k - k; // minus k to start at below range color
+        newArray[i] = range[0] + i * k - k / 2.0; // minus k / 2 to start at below range color
         if (useLogScale) {
           newArray[i] = 10.0 ** newArray[i];
         }
@@ -393,11 +413,24 @@ function vtkMapper(publicAPI, model) {
   };
 
   publicAPI.getIsOpaque = () => {
+    const input = publicAPI.getInputData();
+    const gasResult = publicAPI.getAbstractScalars(
+      input,
+      model.scalarMode,
+      model.arrayAccessMode,
+      model.arrayId,
+      model.colorByArrayName
+    );
+    const scalars = gasResult.scalars;
+    if (!model.scalarVisibility || scalars == null) {
+      // No scalar colors.
+      return true;
+    }
     const lut = publicAPI.getLookupTable();
     if (lut) {
       // Ensure that the lookup table is built
       lut.build();
-      return lut.isOpaque();
+      return lut.areScalarsOpaque(scalars, model.colorMode, -1);
     }
     return true;
   };
@@ -477,7 +510,7 @@ function vtkMapper(publicAPI, model) {
         2 * input.getLines().getNumberOfCells(),
       triangles:
         input.getPolys().getNumberOfValues() -
-        3 * input.getLines().getNumberOfCells(),
+        3 * input.getPolys().getNumberOfCells(),
     };
     return pcount;
   };
@@ -489,6 +522,68 @@ function vtkMapper(publicAPI, model) {
   publicAPI.colorToValue = notImplemented('ColorToValue');
   publicAPI.useInvertibleColorFor = notImplemented('UseInvertibleColorFor');
   publicAPI.clearInvertibleColor = notImplemented('ClearInvertibleColor');
+
+  publicAPI.processSelectorPixelBuffers = (selector, pixelOffsets) => {
+    /* eslint-disable no-bitwise */
+    if (
+      !selector ||
+      !model.selectionWebGLIdsToVTKIds ||
+      !model.populateSelectionSettings
+    ) {
+      return;
+    }
+
+    const rawLowData = selector.getRawPixelBuffer(PassTypes.ID_LOW24);
+    const rawHighData = selector.getRawPixelBuffer(PassTypes.ID_HIGH24);
+    const currentPass = selector.getCurrentPass();
+    const fieldAssociation = selector.getFieldAssociation();
+
+    let idMap = null;
+    if (fieldAssociation === FieldAssociations.FIELD_ASSOCIATION_POINTS) {
+      idMap = model.selectionWebGLIdsToVTKIds.points;
+    } else if (fieldAssociation === FieldAssociations.FIELD_ASSOCIATION_CELLS) {
+      idMap = model.selectionWebGLIdsToVTKIds.cells;
+    }
+
+    if (!idMap) {
+      return;
+    }
+
+    pixelOffsets.forEach((pos) => {
+      if (currentPass === PassTypes.ID_LOW24) {
+        let inValue = 0;
+        if (rawHighData) {
+          inValue += rawHighData[pos];
+          inValue *= 256;
+        }
+        inValue += rawLowData[pos + 2];
+        inValue *= 256;
+        inValue += rawLowData[pos + 1];
+        inValue *= 256;
+        inValue += rawLowData[pos];
+
+        const outValue = idMap[inValue];
+        const lowData = selector.getPixelBuffer(PassTypes.ID_LOW24);
+        lowData[pos] = outValue & 0xff;
+        lowData[pos + 1] = (outValue & 0xff00) >> 8;
+        lowData[pos + 2] = (outValue & 0xff0000) >> 16;
+      } else if (currentPass === PassTypes.ID_HIGH24 && rawHighData) {
+        let inValue = 0;
+        inValue += rawHighData[pos];
+        inValue *= 256;
+        inValue += rawLowData[pos];
+        inValue *= 256;
+        inValue += rawLowData[pos + 1];
+        inValue *= 256;
+        inValue += rawLowData[pos + 2];
+
+        const outValue = idMap[inValue];
+        const highData = selector.getPixelBuffer(PassTypes.ID_HIGH24);
+        highData[pos] = (outValue & 0xff000000) >> 24;
+      }
+    });
+    /* eslint-enable no-bitwise */
+  };
 }
 
 // ----------------------------------------------------------------------------
@@ -515,6 +610,9 @@ const DEFAULT_VALUES = {
 
   fieldDataTupleId: -1,
 
+  populateSelectionSettings: true,
+  selectionWebGLIdsToVTKIds: null,
+
   interpolateScalarsBeforeMapping: false,
   colorCoordinates: null,
   colorTextureMap: null,
@@ -523,8 +621,6 @@ const DEFAULT_VALUES = {
 
   useInvertibleColors: false,
   invertibleScalars: null,
-
-  viewSpecificProperties: null,
 
   customShaderAttributes: [],
 };
@@ -541,6 +637,7 @@ export function extend(publicAPI, model, initialValues = {}) {
     'colorCoordinates',
     'colorMapColors',
     'colorTextureMap',
+    'selectionWebGLIdsToVTKIds',
   ]);
   macro.setGet(publicAPI, model, [
     'colorByArrayName',
@@ -549,19 +646,15 @@ export function extend(publicAPI, model, initialValues = {}) {
     'fieldDataTupleId',
     'interpolateScalarsBeforeMapping',
     'lookupTable',
+    'populateSelectionSettings',
     'renderTime',
     'scalarMode',
     'scalarVisibility',
     'static',
     'useLookupTableScalarRange',
-    'viewSpecificProperties',
     'customShaderAttributes', // point data array names that will be transferred to the VBO
   ]);
   macro.setGetArray(publicAPI, model, ['scalarRange'], 2);
-
-  if (!model.viewSpecificProperties) {
-    model.viewSpecificProperties = {};
-  }
 
   CoincidentTopologyHelper.implementCoincidentTopologyMethods(publicAPI, model);
 

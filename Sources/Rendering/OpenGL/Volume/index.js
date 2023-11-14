@@ -19,12 +19,12 @@ function vtkOpenGLVolume(publicAPI, model) {
       return;
     }
     if (prepass) {
-      model.openGLRenderWindow = publicAPI.getFirstAncestorOfType(
+      model._openGLRenderWindow = publicAPI.getFirstAncestorOfType(
         'vtkOpenGLRenderWindow'
       );
-      model.openGLRenderer =
+      model._openGLRenderer =
         publicAPI.getFirstAncestorOfType('vtkOpenGLRenderer');
-      model.context = model.openGLRenderWindow.getContext();
+      model.context = model._openGLRenderWindow.getContext();
       publicAPI.prepareNodes();
       publicAPI.addMissingNode(model.renderable.getMapper());
       publicAPI.removeUnusedNodes();
@@ -44,7 +44,7 @@ function vtkOpenGLVolume(publicAPI, model) {
     if (
       !model.renderable ||
       !model.renderable.getNestedVisibility() ||
-      (model.openGLRenderer.getSelector() &&
+      (model._openGLRenderer.getSelector() &&
         !model.renderable.getNestedPickable())
     ) {
       return;
@@ -77,6 +77,7 @@ function vtkOpenGLVolume(publicAPI, model) {
       } else {
         mat3.fromMat4(model.normalMatrix, model.MCWCMatrix);
         mat3.invert(model.normalMatrix, model.normalMatrix);
+        mat3.transpose(model.normalMatrix, model.normalMatrix);
       }
       model.keyMatrixTime.modified();
     }
@@ -94,6 +95,7 @@ const DEFAULT_VALUES = {
   // keyMatrixTime: null,
   // normalMatrix: null,
   // MCWCMatrix: null,
+  // _openGLRenderWindow: null,
 };
 
 // ----------------------------------------------------------------------------

@@ -38,7 +38,7 @@ export interface vtkRenderWindow extends vtkObject {
 
 	/**
 	 * Add renderer
-	 * @param renderer 
+	 * @param {vtkRenderer} renderer The vtkRenderer instance.
 	 */
 	addRenderer(renderer: vtkRenderer): void;
 
@@ -53,10 +53,12 @@ export interface vtkRenderWindow extends vtkObject {
 	 * @param {String} format 
 	 * @param {*} opts 
 	 */
-	captureImages(format?: string, opts?: any): void;
+	captureImages(format?: string, opts?: any): Promise<string>[];
 
 	/**
-	 * 
+	 * Switch the rendering backend between WebGL and WebGPU.
+	 * By default, the WebGL backend is used. To switch, to WebGPU call
+	 * `renderWindow.setDefaultViewAPI('WebGPU')` before calling `render`.
 	 */
 	getDefaultViewAPI(): string;
 
@@ -120,14 +122,14 @@ export interface vtkRenderWindow extends vtkObject {
 
 	/**
 	 * 
-	 * @param name 
-	 * @param initialValues 
+	 * @param {String} name 
+	 * @param {} [initialValues] 
 	 */
-	newAPISpecificView(name: string, initialValues: object): any;
+	newAPISpecificView(name: string, initialValues?: object): any;
 
 	/**
 	 * Remove renderer
-	 * @param renderer 
+	 * @param {vtkRenderer} renderer The vtkRenderer instance.
 	 */
 	removeRenderer(renderer: vtkRenderer): void;
 
@@ -143,8 +145,11 @@ export interface vtkRenderWindow extends vtkObject {
 	render(): void;
 
 	/**
-	 * 
-	 * @param defaultViewAPI 
+	 * Switch the rendering backend between WebGL and WebGPU.
+	 * By default, the WebGL backend is used. To switch, to WebGPU call
+	 * `renderWindow.setDefaultViewAPI('WebGPU')` before calling `render`.
+	 * Must be called before `newAPISpecificView()` is called.
+	 * @param defaultViewAPI (default: 'WebGL')
 	 */
 	setDefaultViewAPI(defaultViewAPI: DEFAULT_VIEW_API): boolean;
 

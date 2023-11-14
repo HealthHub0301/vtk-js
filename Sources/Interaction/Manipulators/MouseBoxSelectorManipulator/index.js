@@ -51,12 +51,10 @@ function vtkMouseBoxSelectionManipulator(publicAPI, model) {
       return;
     }
     const [viewWidth, viewHeight] = view.getSize();
-    const { width, height, top, left } = container.getBoundingClientRect();
+    const { width, height } = container.getBoundingClientRect();
     const [xMin, xMax, yMin, yMax] = getBounds();
-    const xShift = left + window.scrollX;
-    const yShift = top + window.scrollY;
-    div.style.left = `${xShift + (width * xMin) / viewWidth}px`;
-    div.style.top = `${yShift + height - (height * yMax) / viewHeight}px`;
+    div.style.left = `${(width * xMin) / viewWidth}px`;
+    div.style.top = `${height - (height * yMax) / viewHeight}px`;
     div.style.width = `${(width * (xMax - xMin)) / viewWidth}px`;
     div.style.height = `${(height * (yMax - yMin)) / viewHeight}px`;
   }
@@ -72,8 +70,12 @@ function vtkMouseBoxSelectionManipulator(publicAPI, model) {
         view = interactor.getView();
       }
 
-      if (!container && view) {
+      if (!container && view?.getContainer) {
         container = view.getContainer();
+      }
+
+      if (!container) {
+        container = model.container;
       }
 
       if (!div) {
@@ -116,8 +118,13 @@ function vtkMouseBoxSelectionManipulator(publicAPI, model) {
   //-------------------------------------------------------------------------
 
   publicAPI.onButtonUp = (interactor, renderer) => {
-    if (!previousPosition || !currentPosition) {
+    if (!previousPosition || (!currentPosition && !model.boxChangeOnClick)) {
       return;
+    }
+
+    // needed because of boxChangeOnClick
+    if (!currentPosition) {
+      currentPosition = previousPosition;
     }
 
     publicAPI.invokeBoxSelectChange({
@@ -145,6 +152,8 @@ function vtkMouseBoxSelectionManipulator(publicAPI, model) {
 
 function DEFAULT_VALUES(initialValues) {
   return {
+    // container: null,
+    boxChangeOnClick: false,
     renderSelection: true,
     ...initialValues,
     selectionStyle: {
@@ -164,7 +173,12 @@ export function extend(publicAPI, model, initialValues = {}) {
   vtkCompositeMouseManipulator.extend(publicAPI, model, initialValues);
   macro.event(publicAPI, model, 'BoxSelectChange'); // Trigger at release
   macro.event(publicAPI, model, 'BoxSelectInput'); // Trigger while dragging
-  macro.setGet(publicAPI, model, ['renderSelection', 'selectionStyle']);
+  macro.setGet(publicAPI, model, [
+    'renderSelection',
+    'boxChangeOnClick',
+    'selectionStyle',
+    'container',
+  ]);
 
   // Object specific methods
   vtkMouseBoxSelectionManipulator(publicAPI, model);

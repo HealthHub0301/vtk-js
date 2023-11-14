@@ -236,7 +236,8 @@ function vtkPicker(publicAPI, model) {
     props.forEach((prop) => {
       const mapper = prop.getMapper();
       pickable = prop.getNestedPickable() && prop.getNestedVisibility();
-      if (prop.getProperty().getOpacity() <= 0.0) {
+
+      if (prop.getProperty().getOpacity?.() <= 0.0) {
         pickable = false;
       }
 
@@ -293,6 +294,7 @@ function vtkPicker(publicAPI, model) {
             p1Mapper,
             p2Mapper,
             tol * 0.333 * (scale[0] + scale[1] + scale[2]),
+            prop,
             mapper
           );
           if (t[0] < Number.MAX_VALUE) {
@@ -325,6 +327,33 @@ function vtkPicker(publicAPI, model) {
       }
       publicAPI.invokePickChange(model.pickedPositions);
       return 1;
+    });
+    // sort array by distance
+    const tempArray = [];
+    for (let i = 0; i < model.pickedPositions.length; i++) {
+      tempArray.push({
+        actor: model.actors[i],
+        pickedPosition: model.pickedPositions[i],
+        distance2: vtkMath.distance2BetweenPoints(
+          p1World,
+          model.pickedPositions[i]
+        ),
+      });
+    }
+    tempArray.sort((a, b) => {
+      const keyA = a.distance2;
+      const keyB = b.distance2;
+      // order the actors based on the distance2 attribute, so the near actors comes
+      // first in the list
+      if (keyA < keyB) return -1;
+      if (keyA > keyB) return 1;
+      return 0;
+    });
+    model.pickedPositions = [];
+    model.actors = [];
+    tempArray.forEach((obj) => {
+      model.pickedPositions.push(obj.pickedPosition);
+      model.actors.push(obj.actor);
     });
   };
 }

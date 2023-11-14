@@ -1,15 +1,17 @@
-import 'vtk.js/Sources/favicon';
+import '@kitware/vtk.js/favicon';
 
 // Load the rendering pieces we want to use (for both WebGL and WebGPU)
-import 'vtk.js/Sources/Rendering/Profiles/Geometry';
+import '@kitware/vtk.js/Rendering/Profiles/Geometry';
 
-import vtkActor from 'vtk.js/Sources/Rendering/Core/Actor';
-import vtkHttpDataSetReader from 'vtk.js/Sources/IO/Core/HttpDataSetReader';
-import vtkFullScreenRenderWindow from 'vtk.js/Sources/Rendering/Misc/FullScreenRenderWindow';
-import vtkMapper from 'vtk.js/Sources/Rendering/Core/Mapper';
-import vtkCubeSource from 'vtk.js/Sources/Filters/Sources/CubeSource';
-import vtkTexture from 'vtk.js/Sources/Rendering/Core/Texture';
-import vtkDeviceOrientationToCamera from 'vtk.js/Sources/Interaction/Misc/DeviceOrientationToCamera';
+import '@kitware/vtk.js/IO/Core/DataAccessHelper/HttpDataAccessHelper'; // HTTP + zip
+
+import vtkActor from '@kitware/vtk.js/Rendering/Core/Actor';
+import vtkHttpDataSetReader from '@kitware/vtk.js/IO/Core/HttpDataSetReader';
+import vtkFullScreenRenderWindow from '@kitware/vtk.js/Rendering/Misc/FullScreenRenderWindow';
+import vtkMapper from '@kitware/vtk.js/Rendering/Core/Mapper';
+import vtkCubeSource from '@kitware/vtk.js/Filters/Sources/CubeSource';
+import vtkTexture from '@kitware/vtk.js/Rendering/Core/Texture';
+import vtkDeviceOrientationToCamera from '@kitware/vtk.js/Interaction/Misc/DeviceOrientationToCamera';
 
 // ----------------------------------------------------------------------------
 // Standard rendering code setup
@@ -31,12 +33,12 @@ let cameraListenerId = -1;
 let nbTextureLoaded = 0;
 const texture = vtkTexture.newInstance();
 const texturePathList = [
-  `${__BASE_PATH__}/data/skybox/mountains/px.vti`,
-  `${__BASE_PATH__}/data/skybox/mountains/nx.vti`,
-  `${__BASE_PATH__}/data/skybox/mountains/py.vti`,
-  `${__BASE_PATH__}/data/skybox/mountains/ny.vti`,
-  `${__BASE_PATH__}/data/skybox/mountains/pz.vti`,
-  `${__BASE_PATH__}/data/skybox/mountains/nz.vti`,
+  `${__BASE_PATH__}/data/skybox/mountains/right.jpg`,
+  `${__BASE_PATH__}/data/skybox/mountains/left.jpg`,
+  `${__BASE_PATH__}/data/skybox/mountains/bottom.jpg`,
+  `${__BASE_PATH__}/data/skybox/mountains/top.jpg`,
+  `${__BASE_PATH__}/data/skybox/mountains/front.jpg`,
+  `${__BASE_PATH__}/data/skybox/mountains/back.jpg`,
 ];
 
 const cube = vtkCubeSource.newInstance();

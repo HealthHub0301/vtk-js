@@ -1,5 +1,5 @@
 import { vtkObject } from "../../../interfaces";
-import { RGBColor } from "../../../types";
+import { RGBAColor, RGBColor } from "../../../types";
 import vtkRenderer from "../../Core/Renderer";
 import vtkRenderWindow from "../../Core/RenderWindow";
 import vtkRenderWindowInteractor from "../../Core/RenderWindowInteractor";
@@ -12,11 +12,13 @@ import vtkRenderWindowInteractor from "../../Core/RenderWindowInteractor";
  *
  */
 export interface IFullScreenRenderWindowInitialValues {
-	background?: RGBColor;
+	background?: RGBColor | RGBAColor;
+	container?: HTMLElement
 	containerStyle?: object;
-	controlPanelStyle?: object,
-	listenWindowResize?: boolean;
+	controlPanelStyle?: object;
 	controllerVisibility?: boolean;
+	defaultViewAPI?: boolean;
+	listenWindowResize?: boolean;
 	resizeCallback?: any;
 }
 
@@ -41,7 +43,9 @@ export interface vtkFullScreenRenderWindow extends vtkObject {
 	delete(): void;
 
 	/**
-	 * 
+	 * Returns vtkWebGPURenderWindow if ?viewAPI='WebGPU' is in URL, or if
+	 * vtkFullScreenRenderWindow has been created with "defaultViewAPI: 'WebGPU",
+	 * otherwise vtkOpenGLRenderWindow is returned.
 	 */
 	getApiSpecificRenderWindow(): any; // vtkOpenGLRenderWindow || vtkWebGPURenderWindow
 
@@ -93,9 +97,9 @@ export interface vtkFullScreenRenderWindow extends vtkObject {
 
 	/**
 	 * Set background color
-	 * @param {Number[]} background The background color.
+	 * @param {RGBColor | RGBAColor} background The background color.
 	 */
-	setBackground(background: number[]): boolean;
+	setBackground(background: RGBColor | RGBAColor): boolean;
 
 	/**
 	 * Hide or show controller

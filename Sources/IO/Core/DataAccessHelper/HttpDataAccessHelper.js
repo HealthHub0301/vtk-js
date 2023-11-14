@@ -1,4 +1,4 @@
-import pako from 'pako';
+import { decompressSync, strFromU8 } from 'fflate';
 
 import macro from 'vtk.js/Sources/macros';
 import Endian from 'vtk.js/Sources/Common/Core/Endian';
@@ -41,10 +41,7 @@ function fetchBinary(url, options = {}) {
       if (xhr.readyState === 4) {
         if (xhr.status === 200 || xhr.status === 0) {
           if (options.compression) {
-            resolve(
-              pako.inflate(new Uint8Array(xhr.response), { to: 'arraybuffer' })
-                .buffer
-            );
+            resolve(decompressSync(new Uint8Array(xhr.response)).buffer);
           } else {
             resolve(xhr.response);
           }
@@ -63,11 +60,18 @@ function fetchBinary(url, options = {}) {
 function fetchArray(instance, baseURL, array, options = {}) {
   if (array.ref && !array.ref.pending) {
     return new Promise((resolve, reject) => {
-      const url = [
-        baseURL,
-        array.ref.basepath,
-        options.compression ? `${array.ref.id}.gz` : array.ref.id,
-      ].join('/');
+      let url = null;
+
+      if (array.ref.url) {
+        url = array.ref.url;
+      } else {
+        url = [
+          baseURL,
+          array.ref.basepath,
+          options.compression ? `${array.ref.id}.gz` : array.ref.id,
+        ].join('/');
+      }
+
       const xhr = openAsyncXHR('GET', url, options);
 
       xhr.onreadystatechange = (e) => {
@@ -84,11 +88,11 @@ function fetchArray(instance, baseURL, array, options = {}) {
 
             if (options.compression) {
               if (array.dataType === 'string' || array.dataType === 'JSON') {
-                array.buffer = pako.inflate(new Uint8Array(array.buffer), {
-                  to: 'string',
-                });
+                array.buffer = strFromU8(
+                  decompressSync(new Uint8Array(array.buffer))
+                );
               } else {
-                array.buffer = pako.inflate(
+                array.buffer = decompressSync(
                   new Uint8Array(array.buffer)
                 ).buffer;
               }
@@ -162,7 +166,7 @@ function fetchJSON(instance, url, options = {}) {
           if (options.compression) {
             resolve(
               JSON.parse(
-                pako.inflate(new Uint8Array(xhr.response), { to: 'string' })
+                strFromU8(decompressSync(new Uint8Array(xhr.response)))
               )
             );
           } else {
@@ -203,9 +207,7 @@ function fetchText(instance, url, options = {}) {
         }
         if (xhr.status === 200 || xhr.status === 0) {
           if (options.compression) {
-            resolve(
-              pako.inflate(new Uint8Array(xhr.response), { to: 'string' })
-            );
+            resolve(strFromU8(decompressSync(new Uint8Array(xhr.response))));
           } else {
             resolve(xhr.responseText);
           }

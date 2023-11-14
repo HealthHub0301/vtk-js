@@ -43,12 +43,18 @@ function BufferedObjectPipe() {
   };
 
   const end = () => {
+    if (closed) return;
     closed = true;
     scheduleFlush();
   };
 
+  /**
+   * Called when karma is loaded in browser.
+   * @param {*} reader
+   */
   const setReader = (r) => {
     reader = r;
+    scheduleFlush();
   };
 
   return {

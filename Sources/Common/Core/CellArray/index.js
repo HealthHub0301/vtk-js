@@ -18,7 +18,12 @@ function extractCellSizes(cellArray) {
 }
 
 function getNumberOfCells(cellArray) {
-  return extractCellSizes(cellArray).length;
+  let cellId = 0;
+  for (let cellArrayIndex = 0; cellArrayIndex < cellArray.length; ) {
+    cellArrayIndex += cellArray[cellArrayIndex] + 1;
+    cellId++;
+  }
+  return cellId;
 }
 
 // ----------------------------------------------------------------------------
@@ -37,14 +42,18 @@ export const STATIC = {
 function vtkCellArray(publicAPI, model) {
   // Set our className
   model.classHierarchy.push('vtkCellArray');
+  const superClass = { ...publicAPI };
 
   publicAPI.getNumberOfCells = (recompute) => {
     if (model.numberOfCells !== undefined && !recompute) {
       return model.numberOfCells;
     }
 
-    model.cellSizes = extractCellSizes(model.values);
-    model.numberOfCells = model.cellSizes.length;
+    if (model.cellSizes) {
+      model.numberOfCells = model.cellSizes.length;
+    } else {
+      model.numberOfCells = getNumberOfCells(publicAPI.getData());
+    }
     return model.numberOfCells;
   };
 
@@ -53,24 +62,51 @@ function vtkCellArray(publicAPI, model) {
       return model.cellSizes;
     }
 
-    model.cellSizes = extractCellSizes(model.values);
+    model.cellSizes = extractCellSizes(publicAPI.getData());
     return model.cellSizes;
   };
 
-  const superSetData = publicAPI.setData;
+  /**
+   * When `resize()` is being used, you then MUST use `insertNextCell()`.
+   */
+  publicAPI.resize = (requestedNumTuples) => {
+    const oldNumTuples = publicAPI.getNumberOfTuples();
+    superClass.resize(requestedNumTuples);
+    const newNumTuples = publicAPI.getNumberOfTuples();
+    if (newNumTuples < oldNumTuples) {
+      if (newNumTuples === 0) {
+        model.numberOfCells = 0;
+        model.cellSizes = [];
+      } else {
+        // We do not know how many cells are left.
+        // Set to undefined to ensure insertNextCell works correctly.
+        model.numberOfCells = undefined;
+        model.cellSizes = undefined;
+      }
+    }
+  };
+
   publicAPI.setData = (typedArray) => {
-    superSetData(typedArray, 1);
+    superClass.setData(typedArray, 1);
     model.numberOfCells = undefined;
     model.cellSizes = undefined;
   };
 
-  /**
-   * Returns the point indexes at the given location as a subarray.
-   */
   publicAPI.getCell = (loc) => {
     let cellLoc = loc;
     const numberOfPoints = model.values[cellLoc++];
     return model.values.subarray(cellLoc, cellLoc + numberOfPoints);
+  };
+
+  publicAPI.insertNextCell = (cellPointIds) => {
+    const cellId = publicAPI.getNumberOfCells();
+    publicAPI.insertNextTuples([cellPointIds.length, ...cellPointIds]);
+    // By computing the number of cells earlier, we made sure that numberOfCells is defined
+    ++model.numberOfCells;
+    if (model.cellSizes != null) {
+      model.cellSizes.push(cellPointIds.length);
+    }
+    return cellId;
   };
 }
 

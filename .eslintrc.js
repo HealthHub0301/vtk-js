@@ -53,6 +53,7 @@ module.exports = {
               'vtk.js/Utilities': path.resolve(__dirname, 'Utilities'),
               'vtk.js/Sources': path.resolve(__dirname, 'Sources'),
               'vtk.js': path.resolve(__dirname, 'Sources'),
+              '@kitware/vtk.js': path.resolve(__dirname, 'Sources'),
             },
           },
         },
@@ -60,6 +61,7 @@ module.exports = {
     },
   },
   env: {
+    es2020: true,
     es6: true,
     browser: true,
   },
@@ -68,5 +70,9 @@ module.exports = {
     '**/example_/*.js',
     // ignore js files in utilities
     'Utilities/**/*.js',
+    // ignore configs
+    'karma.conf.js',
+    'webpack.*.js',
+    '.eslintrc.js',
   ],
 };

@@ -1,3 +1,80 @@
+## From 28.x to 29
+
+- **getOpenGLRenderWindow**: `getOpenGLRenderWindow` has been renamed to `getApiSpecificRenderWindow` in `vtkFullScreenRenderWindow`, `vtkGenericRenderWindow` and `vtkViewProxy` to support WebGL and WebGPU backend. ([#2816](https://github.com/Kitware/vtk-js/pull/2816))
+- **WidgetManager**: Deprecated APIs have been fully removed. ([#2910](https://github.com/Kitware/vtk-js/pull/2910))
+- **OpenGLRenderWindow**: WebXR API has been moved into a WebXR RenderWindowHelper. ([#2924](https://github.com/Kitware/vtk-js/pull/2924))
+- **DistanceWidget**: Removed from vtk.js in favor of vtkLineWidget ([#2945](https://github.com/Kitware/vtk-js/pull/2945))
+
+## From 27.x to 28
+
+- **vtkManipulator.handleEvent**: Change all `handleEvent` signatures of manipulators. Used to be `handleEvent(callData, glRenderWindow): vec3`, it is now `handleEvent(callData, glRenderWindow): { worldCoords: Nullable<vec3>, worldDirection?: mat3 }`.
+  - To upgrade: all instances of `const coords = manipulator.handleEvent(...)` must now be `const { worldCoords } = manipulator.handleEvent(...)`.
+
+## From 26.x to 27
+
+- **abstractimagemapper**: Before this change, the vtkAbstractImageMapper extended vtkAbstractMapper. Now, it extends vtkAbstractMapper3D. Applications with custom sub-classes of vtkAbstractImageMapper that have their own overrides for {set/get}Bounds and {set/get}Center would shadow the superclass methods.
+
+## From 25.x to 26
+
+- **ResliceCursorWidget**: vtkResliceCursorContextRepresentation is deprecated and removed.
+Instead, a `vtkSphereHandleRepresentation` is used for `rotation` and `center` handles,
+and a `vtkLineHandleRepresenttion` is used for the axes. `rotateLineInView()` now
+takes an axis name (string, e.g. 'XinY') instead of a substate. `enableRotation`, `enableTranslation` and `keepOrthogonality` in widgetState are replaced by widget behavior accessors (e.g. `widgetInView.setEnableRotation(false)`). See RCW example.
+  - `widgetState.setShowCenter()` is replaced by `widgetState.getCenterHandle.setVisible()`
+  - `widgetState.setSphereRadius()` is replaced by `widgetState.getCenterHandle().setScale1()` and `widgetState.getStatesWithLabel('rotation').forEach((handle) => handle.setScale1())`
+  - `widgetState.setLineThickness(t)` is replaced by `widgetState.getStatesWithLabel('line').forEach((handle) => handle.setScale3(t,t,t))`
+  - `setScaleInPixels()` should now be set on the widget instead of the `widgetInView`.
+  - `widgetState.setOpacity()` is replaced by `widgetState.getStatesWithLabel('handles').forEach((handle) => handle.setOpacity())`
+- SVGRepresentation and SVG widget support has been fully removed.
+
+## From 24.x to 25
+
+- **math**: For functions calling math functions for computations with matrices, the format must now be number[] or Matrix as defined in the typescript definitions.
+- All widgets handles inheriting from vtkHandleRepresentation now scale up automatically.
+
+## From 23.x to 24
+
+- All old-style widgets except OrientationMarkerWidget and PiecewiseGaussianWidget have been removed.
+
+| **Old-style/deprecated widget**   | **New-style widget**            |
+|-----------------------------------|---------------------------------|
+| `Sources/Interaction/Widgets/...` | `Sources/Widgets/Widgets3D/...` |
+| DistanceWidget			              | DistanceWidget                  |
+| HandleWidget				              | PolyLineWidget                  |
+| ImageCroppingRegionsWidget        | ImageCroppingWidget             |
+| LabelWidget                       | LabelWidget                     |
+| LineWidget                        | LineWidget                      |
+| OrientationMarkerWidget (kept)    | *not implemented*               |
+| PiecewiseGaussianWidget (kept)    | *not implemented*               |
+| ResliceCursor                     | ResliceCursorWidget             |
+
+- In SVGLandmarkRepresentation: `model.showCircle` is replaced by `model.circleProps.visible`
+- In vtk.js subclasses, prefix with '_' the following "protected" model variables:
+  - vtk*: model.openglRenderWindow -> model._openglRenderWindow
+  - vtk*: model.openglRenderer -> model._openglRenderer
+  - vtkInteractorObserver, vtkOrientationMarkerWidget : model.interactor -> model._interactor
+  - vtkAbstractWidget, vtkViewNode: model.parent -> model._parent
+  - vtkProp: model.parentProp -> model._parentProp
+  - vtkRenderWindowInteractor: model.view -> model._view
+  - vtkRenderer: model.renderWindow -> model._renderWindow
+  - vtkHardwareSelector: model.renderer -> model._renderer
+  - vtkAbstractWidget: model.widgetManager -> model._widgetManager
+
+## From 22.x to 23
+
+- **imagemapper**: The original behavior of the image mapper was that if a lookup table is provided,
+it mapped the lookup table's scalar range by default. The new behavior disables using the lookup
+table scalar range by default. Instead, the window/level values are used.
+
+## From 21.x to 22
+
+- `config/rules-linter.js` is now gone.
+- **AbstractMapper**: Changed removeClippingPlane to use instance instead of index.
+
+## From 20.x to 21
+
+SplineWidget's handles now scale up automatically.
+
 ## From 19.x to 20
 
 In ShapeWidget: 

@@ -1,14 +1,27 @@
 import macro from 'vtk.js/Sources/macros';
-import * as vtkMath from 'vtk.js/Sources/Common/Core/Math';
+import vtkCellTypes from 'vtk.js/Sources/Common/DataModel/CellTypes';
+import vtkLine from 'vtk.js/Sources/Common/DataModel/Line';
 import vtkPicker from 'vtk.js/Sources/Rendering/Core/Picker';
-import vtkPoints from 'vtk.js/Sources/Common/Core/Points';
+import vtkPolyLine from 'vtk.js/Sources/Common/DataModel/PolyLine';
 import vtkTriangle from 'vtk.js/Sources/Common/DataModel/Triangle';
-
-import { vec3 } from 'gl-matrix';
+import vtkQuad from 'vtk.js/Sources/Common/DataModel/Quad';
+import * as vtkMath from 'vtk.js/Sources/Common/Core/Math';
+import { CellType } from 'vtk.js/Sources/Common/DataModel/CellTypes/Constants';
+import { vec3, vec4 } from 'gl-matrix';
+import vtkMatrixBuilder from 'vtk.js/Sources/Common/Core/MatrixBuilder';
 
 // ----------------------------------------------------------------------------
 // Global methods
 // ----------------------------------------------------------------------------
+
+function createCellMap() {
+  return {
+    [CellType.VTK_LINE]: vtkLine.newInstance(),
+    [CellType.VTK_POLY_LINE]: vtkPolyLine.newInstance(),
+    [CellType.VTK_TRIANGLE]: vtkTriangle.newInstance(),
+    [CellType.VTK_QUAD]: vtkQuad.newInstance(),
+  };
+}
 
 function clipLineWithPlane(mapper, matrix, p1, p2) {
   const outObj = { planeId: -1, t1: 0.0, t2: 1.0, intersect: 0 };
@@ -158,7 +171,7 @@ function vtkCellPicker(publicAPI, model) {
     return pickResult;
   };
 
-  publicAPI.intersectWithLine = (p1, p2, tol, mapper) => {
+  publicAPI.intersectWithLine = (p1, p2, tol, actor, mapper) => {
     let tMin = Number.MAX_VALUE;
     const t1 = 0.0;
     const t2 = 1.0;
@@ -177,13 +190,22 @@ function vtkCellPicker(publicAPI, model) {
       return Number.MAX_VALUE;
     }
 
-    if (mapper.isA('vtkImageMapper')) {
+    if (mapper.isA('vtkImageMapper') || mapper.isA('vtkImageArrayMapper')) {
       const pickData = mapper.intersectWithLineForCellPicking(p1, p2);
       if (pickData) {
         tMin = pickData.t;
         model.cellIJK = pickData.ijk;
         model.pCoords = pickData.pCoords;
       }
+    } else if (mapper.isA('vtkVolumeMapper')) {
+      tMin = publicAPI.intersectVolumeWithLine(
+        p1,
+        p2,
+        clipLine.t1,
+        clipLine.t2,
+        tol,
+        actor
+      );
     } else if (mapper.isA('vtkMapper')) {
       tMin = publicAPI.intersectActorWithLine(p1, p2, t1, t2, tol, mapper);
     }
@@ -229,6 +251,123 @@ function vtkCellPicker(publicAPI, model) {
         mat[6] * model.pickNormal[1] +
         mat[10] * model.pickNormal[2];
     }
+    return tMin;
+  };
+
+  publicAPI.intersectVolumeWithLine = (p1, p2, t1, t2, tol, volume) => {
+    let tMin = Number.MAX_VALUE;
+    const mapper = volume.getMapper();
+    const imageData = mapper.getInputData();
+    const origin = imageData.getOrigin();
+    const spacing = imageData.getSpacing();
+    const dims = imageData.getDimensions();
+    const scalars = imageData.getPointData().getScalars().getData();
+    const extent = imageData.getExtent();
+    const direction = imageData.getDirection();
+    let imageTransform;
+    if (!vtkMath.isIdentity3x3(direction)) {
+      imageTransform = vtkMatrixBuilder
+        .buildFromRadian()
+        .translate(origin[0], origin[1], origin[2])
+        .multiply3x3(direction)
+        .translate(-origin[0], -origin[1], -origin[2])
+        .invert()
+        .getMatrix();
+    }
+
+    // calculate opacity table
+    const numIComps = 1;
+    const oWidth = 1024;
+    const tmpTable = new Float32Array(oWidth);
+    const opacityArray = new Float32Array(oWidth);
+    let ofun;
+    let oRange;
+    const sampleDist = volume.getMapper().getSampleDistance();
+
+    for (let c = 0; c < numIComps; ++c) {
+      ofun = volume.getProperty().getScalarOpacity(c);
+      oRange = ofun.getRange();
+      ofun.getTable(oRange[0], oRange[1], oWidth, tmpTable, 1);
+      const opacityFactor =
+        sampleDist / volume.getProperty().getScalarOpacityUnitDistance(c);
+
+      // adjust for sample distance etc
+      for (let i = 0; i < oWidth; ++i) {
+        opacityArray[i] = 1.0 - (1.0 - tmpTable[i]) ** opacityFactor;
+      }
+    }
+    const scale = oWidth / (oRange[1] - oRange[0] + 1);
+
+    // Make a new p1 and p2 using the clipped t1 and t2
+    const q1 = [0, 0, 0];
+    const q2 = [0, 0, 0];
+    q1[0] = p1[0];
+    q1[1] = p1[1];
+    q1[2] = p1[2];
+    q2[0] = p2[0];
+    q2[1] = p2[1];
+    q2[2] = p2[2];
+    if (t1 !== 0.0 || t2 !== 1.0) {
+      for (let j = 0; j < 3; j++) {
+        q1[j] = p1[j] * (1.0 - t1) + p2[j] * t1;
+        q2[j] = p1[j] * (1.0 - t2) + p2[j] * t2;
+      }
+    }
+
+    const x1 = [0, 0, 0];
+    const x2 = [0, 0, 0];
+    for (let i = 0; i < 3; i++) {
+      x1[i] = (p1[i] - origin[i]) / spacing[i];
+      x2[i] = (p2[i] - origin[i]) / spacing[i];
+    }
+    const x = [0, 0, 0, 0];
+    const xi = [0, 0, 0];
+
+    const sliceSize = dims[1] * dims[0];
+    const rowSize = dims[0];
+    const nSteps = 100;
+    let insideVolume;
+    for (let t = t1; t < t2; t += 1 / nSteps) {
+      // calculate the location of the point
+      insideVolume = true;
+      for (let j = 0; j < 3; j++) {
+        // "t" is the fractional distance between endpoints x1 and x2
+        x[j] = x1[j] * (1.0 - t) + x2[j] * t;
+      }
+      x[3] = 1.0;
+      if (imageTransform) {
+        vec4.transformMat4(x, x, imageTransform);
+      }
+
+      for (let j = 0; j < 3; j++) {
+        // Bounds check
+        if (x[j] < extent[2 * j]) {
+          x[j] = extent[2 * j];
+          insideVolume = false;
+        } else if (x[j] > extent[2 * j + 1]) {
+          x[j] = extent[2 * j + 1];
+          insideVolume = false;
+        }
+
+        xi[j] = Math.round(x[j]);
+      }
+
+      if (insideVolume) {
+        const index = xi[2] * sliceSize + xi[1] * rowSize + xi[0];
+        let value = scalars[index];
+        if (value < oRange[0]) {
+          value = oRange[0];
+        } else if (value > oRange[1]) {
+          value = oRange[1];
+        }
+        value = Math.floor((value - oRange[0]) * scale);
+        const opacity = tmpTable[value];
+        if (opacity > model.opacityThreshold) {
+          tMin = t;
+          break;
+        }
+      }
+    }
 
     return tMin;
   };
@@ -238,8 +377,10 @@ function vtkCellPicker(publicAPI, model) {
     const minXYZ = [0, 0, 0];
     let pDistMin = Number.MAX_VALUE;
     const minPCoords = [0, 0, 0];
-    let minCellId = -1;
-    const minCell = vtkTriangle.newInstance();
+    let minCellId = null;
+    let minCell = null;
+    let minCellType = null;
+    let subId = null;
     const x = [];
     const data = mapper.getInputData();
     const isPolyData = 1;
@@ -263,31 +404,53 @@ function vtkCellPicker(publicAPI, model) {
     const locator = null;
     if (locator) {
       // TODO when cell locator will be implemented
-    } else if (data.getPolys) {
-      const cellObject = data.getPolys();
-      const points = data.getPoints();
-      const cellData = cellObject.getData();
-      let cellId = 0;
-      const pointsIdList = [-1, -1, -1];
-      const cell = vtkTriangle.newInstance();
-      const cellPoints = vtkPoints.newInstance();
-      // cross all cells
-      for (let i = 0; i < cellData.length; cellId++) {
-        const pCoords = [0, 0, 0];
-        const nbPointsInCell = cellData[i++];
+    } else if (data.getCells) {
+      if (!data.getCells()) {
+        data.buildLinks();
+      }
 
-        cellPoints.setNumberOfPoints(nbPointsInCell);
-        // Extract cell points
-        for (let j = 0; j < nbPointsInCell; j++) {
-          pointsIdList[j] = cellData[i++];
+      const tempCellMap = createCellMap();
+      const minCellMap = createCellMap();
+
+      const numberOfCells = data.getNumberOfCells();
+
+      /* eslint-disable no-continue */
+      for (let cellId = 0; cellId < numberOfCells; cellId++) {
+        const pCoords = [0, 0, 0];
+
+        minCellType = data.getCellType(cellId);
+
+        // Skip cells that are marked as empty
+        if (minCellType === CellType.VTK_EMPTY_CELL) {
+          continue;
         }
 
-        // Create cell from points
-        cell.initialize(points, pointsIdList);
+        const cell = tempCellMap[minCellType];
+
+        if (cell == null) {
+          continue;
+        }
+
+        minCell = minCellMap[minCellType];
+
+        data.getCell(cellId, cell);
 
         let cellPicked;
+
         if (isPolyData) {
-          cellPicked = cell.intersectWithLine(p1, p2, tol, x, pCoords);
+          if (vtkCellTypes.hasSubCells(minCellType)) {
+            cellPicked = cell.intersectWithLine(
+              t1,
+              t2,
+              p1,
+              p2,
+              tol,
+              x,
+              pCoords
+            );
+          } else {
+            cellPicked = cell.intersectWithLine(p1, p2, tol, x, pCoords);
+          }
         } else {
           cellPicked = cell.intersectWithLine(q1, q2, tol, x, pCoords);
           if (t1 !== 0.0 || t2 !== 1.0) {
@@ -302,9 +465,11 @@ function vtkCellPicker(publicAPI, model) {
           cellPicked.t <= t2
         ) {
           const pDist = cell.getParametricDistance(pCoords);
+
           if (pDist < pDistMin || (pDist === pDistMin && cellPicked.t < tMin)) {
             tMin = cellPicked.t;
             pDistMin = pDist;
+            subId = cellPicked.subId;
             minCellId = cellId;
             cell.deepCopy(minCell);
             for (let k = 0; k < 3; k++) {
@@ -314,6 +479,7 @@ function vtkCellPicker(publicAPI, model) {
           }
         }
       }
+      /* eslint-enable no-continue */
     }
 
     if (minCellId >= 0 && tMin < model.globalTMin) {
@@ -324,7 +490,12 @@ function vtkCellPicker(publicAPI, model) {
         weights[i] = 0.0;
       }
       const point = [];
-      minCell.evaluateLocation(minPCoords, point, weights);
+
+      if (vtkCellTypes.hasSubCells(minCellType)) {
+        minCell.evaluateLocation(subId, minPCoords, point, weights);
+      } else {
+        minCell.evaluateLocation(minPCoords, point, weights);
+      }
 
       // Return the polydata to the user
       model.dataSet = data;
@@ -384,6 +555,7 @@ const DEFAULT_VALUES = {
   cellIJK: [],
   pickNormal: [],
   mapperNormal: [],
+  opacityThreshold: 0.2,
 };
 
 // ----------------------------------------------------------------------------
@@ -400,6 +572,9 @@ export function extend(publicAPI, model, initialValues = {}) {
     'pCoords',
     'cellIJK',
   ]);
+
+  macro.setGet(publicAPI, model, ['opacityThreshold']);
+
   macro.get(publicAPI, model, ['cellId']);
 
   // Object methods

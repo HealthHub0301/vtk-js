@@ -15,17 +15,17 @@ function vtkOpenGLCamera(publicAPI, model) {
 
   publicAPI.buildPass = (prepass) => {
     if (prepass) {
-      model.openGLRenderer =
+      model._openGLRenderer =
         publicAPI.getFirstAncestorOfType('vtkOpenGLRenderer');
-      model.openGLRenderWindow = model.openGLRenderer.getParent();
-      model.context = model.openGLRenderWindow.getContext();
+      model._openGLRenderWindow = model._openGLRenderer.getParent();
+      model.context = model._openGLRenderWindow.getContext();
     }
   };
 
   // Renders myself
   publicAPI.opaquePass = (prepass) => {
     if (prepass) {
-      const tsize = model.openGLRenderer.getTiledSizeAndOrigin();
+      const tsize = model._openGLRenderer.getTiledSizeAndOrigin();
       model.context.viewport(
         tsize.lowerLeftU,
         tsize.lowerLeftV,
@@ -41,6 +41,7 @@ function vtkOpenGLCamera(publicAPI, model) {
     }
   };
   publicAPI.translucentPass = publicAPI.opaquePass;
+  publicAPI.zBufferPass = publicAPI.opaquePass;
   publicAPI.opaqueZBufferPass = publicAPI.opaquePass;
   publicAPI.volumePass = publicAPI.opaquePass;
 
@@ -48,7 +49,7 @@ function vtkOpenGLCamera(publicAPI, model) {
     // has the camera changed?
     if (
       ren !== model.lastRenderer ||
-      model.openGLRenderWindow.getMTime() > model.keyMatrixTime.getMTime() ||
+      model._openGLRenderWindow.getMTime() > model.keyMatrixTime.getMTime() ||
       publicAPI.getMTime() > model.keyMatrixTime.getMTime() ||
       ren.getMTime() > model.keyMatrixTime.getMTime() ||
       model.renderable.getMTime() > model.keyMatrixTime.getMTime()
@@ -62,7 +63,7 @@ function vtkOpenGLCamera(publicAPI, model) {
       );
       mat4.transpose(model.keyMatrices.wcvc, model.keyMatrices.wcvc);
 
-      const aspectRatio = model.openGLRenderer.getAspectRatio();
+      const aspectRatio = model._openGLRenderer.getAspectRatio();
 
       mat4.copy(
         model.keyMatrices.vcpc,

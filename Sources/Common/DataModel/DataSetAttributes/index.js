@@ -39,6 +39,7 @@ function vtkDataSetAttributes(publicAPI, model) {
 
   // Set our className
   model.classHierarchy.push('vtkDataSetAttributes');
+  const superClass = { ...publicAPI };
 
   publicAPI.checkNumberOfComponents = (x) => true; // TODO
 
@@ -65,6 +66,7 @@ function vtkDataSetAttributes(publicAPI, model) {
       if (model.arrays[currentAttribute] === arr) {
         return currentAttribute;
       }
+      // FIXME setting an array actually changes its index
       publicAPI.removeArrayByIndex(currentAttribute);
     }
 
@@ -77,6 +79,9 @@ function vtkDataSetAttributes(publicAPI, model) {
     publicAPI.modified();
     return model[`active${attType}`];
   };
+
+  publicAPI.getAttributes = (arr) =>
+    attrTypes.filter((attrType) => publicAPI[`get${attrType}`]() === arr);
 
   publicAPI.setActiveAttributeByName = (arrayName, attType) =>
     publicAPI.setActiveAttributeByIndex(
@@ -124,36 +129,24 @@ function vtkDataSetAttributes(publicAPI, model) {
 
   // Override to allow proper handling of active attributes
   publicAPI.removeAllArrays = () => {
-    model.arrays = [];
     attrTypes.forEach((attType) => {
       model[`active${attType}`] = -1;
     });
-  };
-
-  // Override to allow proper handling of active attributes
-  publicAPI.removeArray = (arrayName) => {
-    model.arrays = model.arrays.filter((entry, idx) => {
-      if (arrayName === entry.data.getName()) {
-        // Found the array to remove, but is it an active attribute?
-        attrTypes.forEach((attType) => {
-          if (idx === model[`active${attType}`]) {
-            model[`active${attType}`] = -1;
-          }
-        });
-        return false;
-      }
-      return true;
-    });
+    superClass.removeAllArrays();
   };
 
   // Override to allow proper handling of active attributes
   publicAPI.removeArrayByIndex = (arrayIdx) => {
-    model.arrays = model.arrays.filter((entry, idx) => idx !== arrayIdx);
-    attrTypes.forEach((attType) => {
-      if (arrayIdx === model[`active${attType}`]) {
-        model[`active${attType}`] = -1;
-      }
-    });
+    if (arrayIdx !== -1) {
+      attrTypes.forEach((attType) => {
+        if (arrayIdx === model[`active${attType}`]) {
+          model[`active${attType}`] = -1;
+        } else if (arrayIdx < model[`active${attType}`]) {
+          model[`active${attType}`] -= 1;
+        }
+      });
+    }
+    return superClass.removeArrayByIndex(arrayIdx);
   };
 
   attrTypes.forEach((value) => {
@@ -171,6 +164,12 @@ function vtkDataSetAttributes(publicAPI, model) {
       model.copyAttributeFlags[AttributeCopyOperations.PASSDATA][
         AttributeTypes[attType]
       ] = false;
+    };
+    publicAPI[`copy${value}On`] = () => {
+      const attType = value.toUpperCase();
+      model.copyAttributeFlags[AttributeCopyOperations.PASSDATA][
+        AttributeTypes[attType]
+      ] = true;
     };
   });
 

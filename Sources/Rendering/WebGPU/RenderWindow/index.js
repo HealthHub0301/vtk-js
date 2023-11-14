@@ -7,7 +7,7 @@ import vtkWebGPUHardwareSelector from 'vtk.js/Sources/Rendering/WebGPU/HardwareS
 import vtkWebGPUViewNodeFactory from 'vtk.js/Sources/Rendering/WebGPU/ViewNodeFactory';
 import vtkRenderPass from 'vtk.js/Sources/Rendering/SceneGraph/RenderPass';
 import vtkRenderWindowViewNode from 'vtk.js/Sources/Rendering/SceneGraph/RenderWindowViewNode';
-// import { VtkDataTypes } from 'vtk.js/Sources/Common/Core/DataArray/Constants';
+import HalfFloat from 'vtk.js/Sources/Common/Core/HalfFloat';
 
 const { vtkErrorMacro } = macro;
 // const IS_CHROME = navigator.userAgent.indexOf('Chrome') !== -1;
@@ -67,7 +67,8 @@ function vtkWebGPURenderWindow(publicAPI, model) {
 
   publicAPI.recreateSwapChain = () => {
     if (model.context) {
-      const presentationFormat = model.context.getPreferredFormat(
+      model.context.unconfigure();
+      model.presentationFormat = navigator.gpu.getPreferredCanvasFormat(
         model.adapter
       );
 
@@ -75,10 +76,13 @@ function vtkWebGPURenderWindow(publicAPI, model) {
       /* eslint-disable no-bitwise */
       model.context.configure({
         device: model.device.getHandle(),
-        format: presentationFormat,
+        format: model.presentationFormat,
+        alphaMode: 'premultiplied',
         usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_DST,
-        size: model.size,
+        width: model.size[0],
+        height: model.size[1],
       });
+      model._configured = true;
     }
   };
 
@@ -97,7 +101,7 @@ function vtkWebGPURenderWindow(publicAPI, model) {
 
       publicAPI.initialize();
     } else if (model.initialized) {
-      if (!model.context.validConfiguration) {
+      if (!model._configured) {
         publicAPI.recreateSwapChain();
       }
       model.commandEncoder = model.device.createCommandEncoder();
@@ -184,7 +188,9 @@ function vtkWebGPURenderWindow(publicAPI, model) {
 
   publicAPI.create3DContextAsync = async () => {
     // Get a GPU device to render with
-    model.adapter = await navigator.gpu.requestAdapter();
+    model.adapter = await navigator.gpu.requestAdapter({
+      powerPreference: 'high-performance',
+    });
     if (model.deleted) {
       return;
     }
@@ -345,6 +351,8 @@ function vtkWebGPURenderWindow(publicAPI, model) {
           publicAPI.modified();
 
           if (resetCamera) {
+            const isUserResetCamera = resetCamera !== true;
+
             // If resetCamera was requested, we first save camera parameters
             // from all the renderers, so we can restore them later
             model._screenshot.cameras = model.renderable
@@ -358,7 +366,10 @@ function vtkWebGPURenderWindow(publicAPI, model) {
                 );
 
                 return {
-                  resetCameraFn: renderer.resetCamera,
+                  resetCameraArgs: isUserResetCamera ? { renderer } : undefined,
+                  resetCameraFn: isUserResetCamera
+                    ? resetCamera
+                    : renderer.resetCamera,
                   restoreParamsFn: camera.set,
                   // "clone" the params so we don't keep refs to properties
                   arg: JSON.parse(JSON.stringify(params)),
@@ -368,8 +379,9 @@ function vtkWebGPURenderWindow(publicAPI, model) {
             // Perform the resetCamera() on each renderer only after capturing
             // the params from all active cameras, in case there happen to be
             // linked cameras among the renderers.
-            model._screenshot.cameras.forEach(({ resetCameraFn }) =>
-              resetCameraFn()
+            model._screenshot.cameras.forEach(
+              ({ resetCameraFn, resetCameraArgs }) =>
+                resetCameraFn(resetCameraArgs)
             );
           }
 
@@ -466,9 +478,9 @@ function vtkWebGPURenderWindow(publicAPI, model) {
       height: texture.getHeight(),
     };
 
-    // must be a multiple of 256 bytes, so 64 texels with rgba8
-    result.colorBufferWidth = 64 * Math.floor((result.width + 63) / 64);
-    result.colorBufferSizeInBytes = result.colorBufferWidth * result.height * 4;
+    // must be a multiple of 256 bytes, so 32 texels with rgba16
+    result.colorBufferWidth = 32 * Math.floor((result.width + 31) / 32);
+    result.colorBufferSizeInBytes = result.colorBufferWidth * result.height * 8;
     const colorBuffer = vtkWebGPUBuffer.newInstance();
     colorBuffer.setDevice(device);
     /* eslint-disable no-bitwise */
@@ -487,7 +499,7 @@ function vtkWebGPURenderWindow(publicAPI, model) {
       },
       {
         buffer: colorBuffer.getHandle(),
-        bytesPerRow: 4 * result.colorBufferWidth,
+        bytesPerRow: 8 * result.colorBufferWidth,
         rowsPerImage: result.height,
       },
       {
@@ -503,9 +515,7 @@ function vtkWebGPURenderWindow(publicAPI, model) {
     await cLoad;
     /* eslint-enable no-undef */
 
-    result.colorValues = new Uint8ClampedArray(
-      colorBuffer.getMappedRange().slice()
-    );
+    result.colorValues = new Uint16Array(colorBuffer.getMappedRange().slice());
     colorBuffer.unmap();
     // repack the array
     const tmparray = new Uint8ClampedArray(result.height * result.width * 4);
@@ -513,14 +523,33 @@ function vtkWebGPURenderWindow(publicAPI, model) {
       for (let x = 0; x < result.width; x++) {
         const doffset = (y * result.width + x) * 4;
         const soffset = (y * result.colorBufferWidth + x) * 4;
-        tmparray[doffset] = result.colorValues[soffset + 2];
-        tmparray[doffset + 1] = result.colorValues[soffset + 1];
-        tmparray[doffset + 2] = result.colorValues[soffset];
-        tmparray[doffset + 3] = result.colorValues[soffset + 3];
+        tmparray[doffset] =
+          255.0 * HalfFloat.fromHalf(result.colorValues[soffset]);
+        tmparray[doffset + 1] =
+          255.0 * HalfFloat.fromHalf(result.colorValues[soffset + 1]);
+        tmparray[doffset + 2] =
+          255.0 * HalfFloat.fromHalf(result.colorValues[soffset + 2]);
+        tmparray[doffset + 3] =
+          255.0 * HalfFloat.fromHalf(result.colorValues[soffset + 3]);
       }
     }
     result.colorValues = tmparray;
     return result;
+  };
+
+  publicAPI.createSelector = () => {
+    const ret = vtkWebGPUHardwareSelector.newInstance();
+    ret.setWebGPURenderWindow(publicAPI);
+    return ret;
+  };
+
+  const superSetSize = publicAPI.setSize;
+  publicAPI.setSize = (width, height) => {
+    const modified = superSetSize(width, height);
+    if (modified) {
+      publicAPI.invokeWindowResizeEvent({ width, height });
+    }
+    return modified;
   };
 
   publicAPI.delete = macro.chain(publicAPI.delete, publicAPI.setViewStream);
@@ -546,6 +575,7 @@ const DEFAULT_VALUES = {
   useBackgroundImage: false,
   nextPropID: 1,
   xrSupported: false,
+  presentationFormat: null,
 };
 
 // ----------------------------------------------------------------------------
@@ -589,6 +619,7 @@ export function extend(publicAPI, model, initialValues = {}) {
   macro.get(publicAPI, model, [
     'commandEncoder',
     'device',
+    'presentationFormat',
     'useBackgroundImage',
     'xrSupported',
   ]);
@@ -605,6 +636,7 @@ export function extend(publicAPI, model, initialValues = {}) {
   ]);
 
   macro.setGetArray(publicAPI, model, ['size'], 2);
+  macro.event(publicAPI, model, 'windowResizeEvent');
 
   // Object methods
   vtkWebGPURenderWindow(publicAPI, model);

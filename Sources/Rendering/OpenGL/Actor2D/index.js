@@ -17,12 +17,12 @@ function vtkOpenGLActor2D(publicAPI, model) {
       if (!model.renderable) {
         return;
       }
-      model.openGLRenderWindow = publicAPI.getFirstAncestorOfType(
+      model._openGLRenderWindow = publicAPI.getFirstAncestorOfType(
         'vtkOpenGLRenderWindow'
       );
-      model.openGLRenderer =
+      model._openGLRenderer =
         publicAPI.getFirstAncestorOfType('vtkOpenGLRenderer');
-      model.context = model.openGLRenderWindow.getContext();
+      model.context = model._openGLRenderWindow.getContext();
       publicAPI.prepareNodes();
       publicAPI.addMissingNodes(model.renderable.getTextures());
       publicAPI.addMissingNode(model.renderable.getMapper());
@@ -61,7 +61,7 @@ function vtkOpenGLActor2D(publicAPI, model) {
       !model.renderable ||
       !model.renderable.getNestedVisibility() ||
       !model.renderable.getIsOpaque() ||
-      (model.openGLRenderer.getSelector() &&
+      (model._openGLRenderer.getSelector() &&
         !model.renderable.getNestedPickable())
     ) {
       return;
@@ -80,7 +80,7 @@ function vtkOpenGLActor2D(publicAPI, model) {
       !model.renderable ||
       !model.renderable.getNestedVisibility() ||
       model.renderable.getIsOpaque() ||
-      (model.openGLRenderer.getSelector() &&
+      (model._openGLRenderer.getSelector() &&
         !model.renderable.getNestedPickable())
     ) {
       return;
@@ -97,7 +97,7 @@ function vtkOpenGLActor2D(publicAPI, model) {
       !model.oglmapper ||
       !model.renderable ||
       !model.renderable.getNestedVisibility() ||
-      (model.openGLRenderer.getSelector() &&
+      (model._openGLRenderer.getSelector() &&
         !model.renderable.getNestedPickable)
     ) {
       return;

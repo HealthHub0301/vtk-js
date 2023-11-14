@@ -7,6 +7,24 @@ import { Bounds, Extent, HSVColor, RGBAColor, RGBColor, Matrix, Matrix3x3, Range
 export function createArray(size?: number): number[];
 
 /**
+ * Given two rows indices, swap the two rows of a nxn matrix
+ * @param {Number[]} matrix The n by n matrix in wich we want to swap the vectors.
+ * @param {Number} n size of the matrix.
+ * @param {Number} row1 index of first row to swap with the other.
+ * @param {Number} row2 index of second row to swap with the other.
+ */
+export function swapRowsMatrix_nxn(matrix: number[], n: number, row1: number, row2: number): void;
+
+/**
+ * Given two columns indices, swap the two columns of a nxn matrix
+ * @param {Number[]} matrix The n by n matrix in wich we want to swap the vectors.
+ * @param {Number} n size of the matrix.
+ * @param {Number} column1 index of first col to swap with the other.
+ * @param {Number} column2 index of second col to swap with the other.
+ */
+ export function swapColumnsMatrix_nxn(matrix: number[], n: number, column1: number, column2: number): void;
+
+/**
  * Get the number π.
  */
 export function Pi(): number;
@@ -364,9 +382,47 @@ export function normalize2D(x: Vector2): number;
 
 /**
  *
- * @param {Number[][]|Number[]} args 
+ * @param {Number[]} args 
  */
-export function determinant2x2(args: number[][]|number[]): number;
+export function determinant2x2(args: number[]): number;
+
+/**
+ * Fill a 4x4 matrix with the given row vectors
+ * @param {Vector4} row0 
+ * @param {Vector4} row1
+ * @param {Vector4} row2
+ * @param {Vector4} row3
+ * @param {Matrix} mat
+ */
+export function rowsToMat4(row0: Vector4, row1: Vector4, row2: Vector4, row3: Vector4, mat: Matrix): Matrix;
+
+/**
+ * Fill a 4x4 matrix with the given column vectors
+ * @param {Vector4} column0 
+ * @param {Vector4} column1
+ * @param {Vector4} column2
+ * @param {Vector4} column3
+ * @param {Matrix} mat
+ */
+export function columnsToMat4(column0: Vector4, column1: Vector4, column2: Vector4, column3: Vector4, mat: Matrix): Matrix;
+
+ /**
+ * Fill a 3x3 matrix with the given row vectors
+ * @param {Vector3} row0 
+ * @param {Vector3} row1
+ * @param {Vector3} row2
+ * @param {Matrix} mat
+ */
+export function rowsToMat3(row0: Vector3, row1: Vector3, row2: Vector3, mat: Matrix): Matrix;
+
+ /**
+ * Fill a 3x3 matrix with the given column vectors
+ * @param {Vector3} column0 
+ * @param {Vector3} column1
+ * @param {Vector3} column2
+ * @param {Matrix} mat
+ */
+export function columnsToMat3(column0: Vector3, column1: Vector3, column2: Vector3, mat: Matrix): Matrix;
 
 /**
  * LU Factorization of a 3x3 matrix.
@@ -434,10 +490,39 @@ export function transpose3x3(in_3x3: Matrix3x3, outT_3x3: Matrix3x3): void;
 export function invert3x3(in_3x3: Matrix3x3, outI_3x3: Matrix3x3): void;
 
 /**
+ * Set mat to the identity matrix.
+ * @param {Number} n The size of the matrix.
+ * @param {Number[]} mat The output matrix.
+ * @see isIdentity()
+ * @see identity3x3()
+ */
+export function identity(n: number, mat: number[]): void;
+
+/**
  * Set mat_3x3 to the identity matrix.
  * @param {Matrix3x3} mat_3x3 The input 3x3 matrix.
+ * @see isIdentity3x3()
+ * @see identity()
  */
 export function identity3x3(mat_3x3: Matrix3x3): void;
+
+/**
+ * Returns true if provided matrix is the identity matrix.
+ * @param {Number[]} mat The 3x3 matrix to check
+ * @param {Number} [eps] The tolerance value.
+ * @see isIdentity()
+ * @see identity()
+ */
+export function isIdentity(mat: Matrix3x3, eps?: number): boolean;
+
+/**
+ * Returns true if provided 3x3 matrix is the identity matrix.
+ * @param {Matrix3x3} mat The 3x3 matrix to check
+ * @param {Number} [eps] The tolerance value.
+ * @see isIdentity()
+ * @see identity3x3()
+ */
+export function isIdentity3x3(mat: Matrix3x3, eps?: number): boolean;
 
 /**
  * Calculate the determinant of a 3x3 matrix.
@@ -476,12 +561,12 @@ export function roundNumber(num: number, digits?: number): number;
 export function roundVector(vector: Vector3, out?: Vector3, digits?: number): Vector3;
 
 /**
- *
- * @param {Matrix} a 
- * @param {Number} n 
- * @param {Number[]} w 
- * @param {Number[]} v 
- */
+* Jacobi iteration for the solution of eigenvectors/eigenvalues. Input matrix a is modified (the upper triangle is filled with zeros)
+* @param {Matrix} a real symetric nxn matrix
+* @param {Number} n matrix size
+* @param {Number[]} w vector of size n to store eigenvalues (stored in decreasing order)
+* @param {Number[]} v matrix of size nxn to store eigenvectors (stored in decreasing order, normalized)
+*/
 export function jacobiN(a: Matrix, n: number, w: number[], v: number[]): number;
 
 /**
@@ -550,13 +635,14 @@ export function solveLinearSystem(A: Matrix, x: number[], size: number): number;
 
 /**
  *
- * @param {Matrix} A 
- * @param {Matrix} AI 
- * @param {Number} [size] 
+ * @param {Matrix} A The input matrix. It is modified during the inversion.
+ * @param {Matrix} AI The output inverse matrix. Can be the same as input matrix.
+ * @param {Number} [size] The square size of the matrix to invert : 4 for a 4x4
  * @param {Number[]} [index] 
  * @param {Number[]} [column] 
+ * @return AI on success, null otherwise
  */
-export function invertMatrix(A: Matrix, AI: Matrix, size?: number, index?: number[], column?: number[]): number;
+export function invertMatrix(A: Matrix, AI: Matrix, size?: number, index?: number[], column?: number[]): Matrix|null;
 
 /**
  *
@@ -690,6 +776,7 @@ export function areBoundsInitialized(bounds: Bounds): boolean;
  * @param {Vector3} point1 The coordinate of the first point.
  * @param {Vector3} point2 The coordinate of the second point.
  * @param {Bounds} bounds Output array that hold bounds, optionally empty.
+ * @deprecated please use vtkBoundingBox.addPoints(vtkBoundingBox.reset([]), points)
  */
 export function computeBoundsFromPoints(point1: Vector3, point2: Vector3, bounds: Bounds): Bounds;
 
@@ -792,6 +879,19 @@ export function createUninitializedBounds(): Bounds;
 export function getMajorAxisIndex(vector: number[]): number;
 
 /**
+ * Return the closest orthogonal matrix of 1, -1 and 0
+ * It works for both column major and row major matrices
+ * This function iteratively associate a column with a row by choosing
+ * the greatest absolute value from the remaining row and columns
+ * For each association, a -1 or a 1 is set in the output, depending on
+ * the sign of the value in the original matrix
+ * 
+ * @param {Number[]} matrix The matrix of size nxn
+ * @param {Number[]} n The size of the square matrix, defaults to 3
+ */
+export function getSparseOrthogonalMatrix(matrix: number[], n: number): number[];
+
+/**
  *
  * @param {Number} value The value to convert.
  */
@@ -837,6 +937,8 @@ export function isFinite(value: any): boolean;
  */
 export declare const vtkMath: {
 	createArray: typeof createArray;
+	swapRowsMatrix_nxn: typeof swapRowsMatrix_nxn;
+	swapColumnsMatrix_nxn: typeof swapColumnsMatrix_nxn;
 	Pi: typeof Pi;
 	radiansFromDegrees: typeof radiansFromDegrees;
 	degreesFromRadians: typeof degreesFromRadians;
@@ -882,6 +984,10 @@ export declare const vtkMath: {
 	norm2D: typeof norm2D;
 	normalize2D: typeof normalize2D;
 	determinant2x2: typeof determinant2x2;
+	rowsToMat4: typeof rowsToMat4;
+	columnsToMat4: typeof columnsToMat4;
+	rowsToMat3: typeof rowsToMat3;
+	columnsToMat3: typeof columnsToMat3;
 	LUFactor3x3: typeof LUFactor3x3;
 	LUSolve3x3: typeof LUSolve3x3;
 	linearSolve3x3: typeof linearSolve3x3;
@@ -935,6 +1041,7 @@ export declare const vtkMath: {
 	isInf: typeof isInf;
 	createUninitializedBounds: typeof createUninitializedBounds;
 	getMajorAxisIndex: typeof getMajorAxisIndex;
+	getSparseOrthogonalMatrix: typeof getSparseOrthogonalMatrix;
 	floatToHex2: typeof floatToHex2;
 	floatRGB2HexCode: typeof floatRGB2HexCode;
 	float2CssRGBA: typeof float2CssRGBA;

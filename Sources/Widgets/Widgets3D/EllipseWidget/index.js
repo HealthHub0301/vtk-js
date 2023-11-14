@@ -3,7 +3,6 @@ import vtkCircleContextRepresentation from 'vtk.js/Sources/Widgets/Representatio
 import vtkPlanePointManipulator from 'vtk.js/Sources/Widgets/Manipulators/PlaneManipulator';
 import vtkShapeWidget from 'vtk.js/Sources/Widgets/Widgets3D/ShapeWidget';
 import vtkSphereHandleRepresentation from 'vtk.js/Sources/Widgets/Representations/SphereHandleRepresentation';
-import vtkSVGLandmarkRepresentation from 'vtk.js/Sources/Widgets/SVG/SVGLandmarkRepresentation';
 import widgetBehavior from 'vtk.js/Sources/Widgets/Widgets3D/EllipseWidget/behavior';
 import stateGenerator from 'vtk.js/Sources/Widgets/Widgets3D/EllipseWidget/state';
 
@@ -35,7 +34,6 @@ function vtkEllipseWidget(publicAPI, model) {
     'opacity',
   ];
 
-  model.behavior = widgetBehavior;
   publicAPI.getRepresentationsForViewType = (viewType) => {
     switch (viewType) {
       case ViewTypes.DEFAULT:
@@ -47,21 +45,10 @@ function vtkEllipseWidget(publicAPI, model) {
           {
             builder: vtkSphereHandleRepresentation,
             labels: ['moveHandle'],
-            initialValues: {
-              scaleInPixels: true,
-            },
           },
           {
             builder: vtkCircleContextRepresentation,
             labels: ['ellipseHandle'],
-          },
-          {
-            builder: vtkSVGLandmarkRepresentation,
-            initialValues: {
-              showCircle: false,
-              text: '',
-            },
-            labels: ['SVGtext'],
           },
         ];
     }
@@ -71,15 +58,18 @@ function vtkEllipseWidget(publicAPI, model) {
   // initialization
   // --------------------------------------------------------------------------
 
-  // Default manipulator
-  model.manipulator = vtkPlanePointManipulator.newInstance();
-  model.widgetState = stateGenerator();
+  publicAPI.setManipulator(
+    model.manipulator ||
+      vtkPlanePointManipulator.newInstance({ useCameraNormal: true })
+  );
 }
 
 // ----------------------------------------------------------------------------
 
 function defaultValues(initialValues) {
   return {
+    behavior: widgetBehavior,
+    widgetState: stateGenerator(),
     modifierBehavior: {
       None: {
         [BehaviorCategory.PLACEMENT]:
@@ -104,7 +94,7 @@ function defaultValues(initialValues) {
 
 export function extend(publicAPI, model, initialValues = {}) {
   vtkShapeWidget.extend(publicAPI, model, defaultValues(initialValues));
-  macro.setGet(publicAPI, model, ['manipulator', 'widgetState']);
+  macro.setGet(publicAPI, model, ['widgetState']);
 
   vtkEllipseWidget(publicAPI, model);
 }

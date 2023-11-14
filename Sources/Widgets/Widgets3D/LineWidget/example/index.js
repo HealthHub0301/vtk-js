@@ -1,18 +1,22 @@
-import 'vtk.js/Sources/favicon';
+import '@kitware/vtk.js/favicon';
 
 // Load the rendering pieces we want to use (for both WebGL and WebGPU)
-import 'vtk.js/Sources/Rendering/Profiles/Geometry';
-import 'vtk.js/Sources/Rendering/Profiles/Glyph';
+import '@kitware/vtk.js/Rendering/Profiles/Geometry';
+import '@kitware/vtk.js/Rendering/Profiles/Glyph';
 
 import DeepEqual from 'deep-equal';
-import vtkActor from 'vtk.js/Sources/Rendering/Core/Actor';
-import vtkCubeSource from 'vtk.js/Sources/Filters/Sources/CubeSource';
-import vtkFullScreenRenderWindow from 'vtk.js/Sources/Rendering/Misc/FullScreenRenderWindow';
-import vtkMapper from 'vtk.js/Sources/Rendering/Core/Mapper';
-import vtkLineWidget from 'vtk.js/Sources/Widgets/Widgets3D/LineWidget';
-import vtkWidgetManager from 'vtk.js/Sources/Widgets/Core/WidgetManager';
+import vtkActor from '@kitware/vtk.js/Rendering/Core/Actor';
+import vtkCubeSource from '@kitware/vtk.js/Filters/Sources/CubeSource';
+import vtkFullScreenRenderWindow from '@kitware/vtk.js/Rendering/Misc/FullScreenRenderWindow';
+import vtkMapper from '@kitware/vtk.js/Rendering/Core/Mapper';
+import vtkLineWidget from '@kitware/vtk.js/Widgets/Widgets3D/LineWidget';
+import vtkWidgetManager from '@kitware/vtk.js/Widgets/Core/WidgetManager';
+import vtkInteractorObserver from '@kitware/vtk.js/Rendering/Core/InteractorObserver';
 
+import { bindSVGRepresentation } from 'vtk.js/Examples/Widgets/Utilities/SVGHelpers';
 import controlPanel from './controlPanel.html';
+
+const { computeWorldToDisplay } = vtkInteractorObserver;
 
 // ----------------------------------------------------------------------------
 // Standard rendering code setup
@@ -44,7 +48,7 @@ widgetManager.setRenderer(renderer);
 let widget = null;
 
 let lineWidget = null;
-let selectedWidgetIndex = 0;
+let selectedWidgetIndex = null;
 
 let getHandle = {};
 
@@ -56,20 +60,68 @@ renderer.resetCamera();
 
 fullScreenRenderer.addController(controlPanel);
 
+// -----------------------------------------------------------
+// SVG handling
+// -----------------------------------------------------------
+
+const svgCleanupCallbacks = [];
+
+function setupSVG(w) {
+  svgCleanupCallbacks.push(
+    bindSVGRepresentation(renderer, w.getWidgetState(), {
+      mapState(widgetState, { size }) {
+        const textState = widgetState.getText();
+        const text = textState.getText();
+        const origin = textState.getOrigin();
+        if (origin) {
+          const coords = computeWorldToDisplay(renderer, ...origin);
+          const position = [coords[0], size[1] - coords[1]];
+          return {
+            text,
+            position,
+          };
+        }
+        return null;
+      },
+      render(data, h) {
+        if (data) {
+          return h(
+            'text',
+            {
+              key: 'lineText',
+              attrs: {
+                x: data.position[0],
+                y: data.position[1],
+                dx: 12,
+                dy: -12,
+                fill: 'white',
+                'font-size': 32,
+              },
+            },
+            data.text
+          );
+        }
+        return [];
+      },
+    })
+  );
+}
+
 // Text Modifiers ------------------------------------------
 
 function updateLinePos() {
   const input = document.getElementById('linePos').value;
   const subState = lineWidget.getWidgetState().getPositionOnLine();
   subState.setPosOnLine(input / 100);
-  lineWidget.placeText();
   renderWindow.render();
 }
 
 function updateText() {
   const input = document.getElementById('txtIpt').value;
-  lineWidget.setText(input);
-  renderWindow.render();
+  if (lineWidget) {
+    lineWidget.setText(input);
+    renderWindow.render();
+  }
 }
 document.querySelector('#txtIpt').addEventListener('keyup', updateText);
 // updateText();
@@ -124,7 +176,29 @@ function updateHandleShape(handleId) {
 function setWidgetColor(currentWidget, color) {
   currentWidget.getWidgetState().getHandle1().setColor(color);
   currentWidget.getWidgetState().getHandle2().setColor(color);
-  currentWidget.getWidgetState().getMoveHandle().setColor(color);
+
+  currentWidget.setUseActiveColor(false);
+  currentWidget.getWidgetState().getMoveHandle().setColor(0.3);
+}
+
+// Restore color
+function unselectWidget(index) {
+  if (index != null) {
+    const widgetToUnselect = widgetManager.getWidgets()[selectedWidgetIndex];
+    setWidgetColor(widgetToUnselect, 0.5); // green
+  }
+  if (index === selectedWidgetIndex) {
+    selectedWidgetIndex = null;
+  }
+}
+
+function selectWidget(index) {
+  unselectWidget(selectedWidgetIndex);
+  if (index != null) {
+    const widgetToSelect = widgetManager.getWidgets()[index];
+    setWidgetColor(widgetToSelect, 0.2); // yellow
+  }
+  selectedWidgetIndex = index;
 }
 
 const inputHandle1 = document.getElementById('idh1');
@@ -176,6 +250,9 @@ document.querySelector('#addWidget').addEventListener('click', () => {
   currentHandle = widgetManager.addWidget(widget);
   lineWidget = currentHandle;
 
+  selectWidget(widgetManager.getWidgets().length - 1);
+  setupSVG(widget);
+
   getHandle = {
     1: lineWidget.getWidgetState().getHandle1(),
     2: lineWidget.getWidgetState().getHandle2(),
@@ -198,9 +275,7 @@ document.querySelector('#addWidget').addEventListener('click', () => {
       1: currentHandle.getWidgetState().getHandle1(),
       2: currentHandle.getWidgetState().getHandle2(),
     };
-    setWidgetColor(widgetManager.getWidgets()[selectedWidgetIndex], 0.5);
-    setWidgetColor(widgetManager.getWidgets()[index], 0.2);
-    selectedWidgetIndex = index;
+    selectWidget(index);
     lineWidget = currentHandle;
     document.getElementById('idh1').value =
       getHandle[1].getShape() === '' ? 'sphere' : getHandle[1].getShape();
@@ -222,9 +297,11 @@ document.querySelector('#addWidget').addEventListener('click', () => {
 });
 
 document.querySelector('#removeWidget').addEventListener('click', () => {
+  unselectWidget(selectedWidgetIndex);
   widgetManager.removeWidget(widgetManager.getWidgets()[selectedWidgetIndex]);
+  if (svgCleanupCallbacks.length) svgCleanupCallbacks.pop()();
   if (widgetManager.getWidgets().length !== 0) {
-    selectedWidgetIndex = widgetManager.getWidgets().length - 1;
+    selectWidget(widgetManager.getWidgets().length - 1);
     setWidgetColor(widgetManager.getWidgets()[selectedWidgetIndex], 0.2);
   }
 });

@@ -1,11 +1,11 @@
-import macro from 'vtk.js/Sources/macros';
-import vtkAbstractWidgetFactory from 'vtk.js/Sources/Widgets/Core/AbstractWidgetFactory';
-import vtkConvexFaceContextRepresentation from 'vtk.js/Sources/Widgets/Representations/ConvexFaceContextRepresentation';
-import vtkPlaneManipulator from 'vtk.js/Sources/Widgets/Manipulators/PlaneManipulator';
-import vtkSphereHandleRepresentation from 'vtk.js/Sources/Widgets/Representations/SphereHandleRepresentation';
-import vtkStateBuilder from 'vtk.js/Sources/Widgets/Core/StateBuilder';
+import macro from '@kitware/vtk.js/macros';
+import vtkAbstractWidgetFactory from '@kitware/vtk.js/Widgets/Core/AbstractWidgetFactory';
+import vtkConvexFaceContextRepresentation from '@kitware/vtk.js/Widgets/Representations/ConvexFaceContextRepresentation';
+import vtkPlaneManipulator from '@kitware/vtk.js/Widgets/Manipulators/PlaneManipulator';
+import vtkSphereHandleRepresentation from '@kitware/vtk.js/Widgets/Representations/SphereHandleRepresentation';
+import vtkStateBuilder from '@kitware/vtk.js/Widgets/Core/StateBuilder';
 
-import { ViewTypes } from 'vtk.js/Sources/Widgets/Core/WidgetManager/Constants';
+import { ViewTypes } from '@kitware/vtk.js/Widgets/Core/WidgetManager/Constants';
 
 // ----------------------------------------------------------------------------
 // Widget linked to a view
@@ -26,7 +26,7 @@ function widgetBehavior(publicAPI, model) {
       return macro.VOID;
     }
     isDragging = true;
-    model.interactor.requestAnimation(publicAPI);
+    model._interactor.requestAnimation(publicAPI);
     return macro.EVENT_ABORT;
   };
 
@@ -39,7 +39,7 @@ function widgetBehavior(publicAPI, model) {
 
   publicAPI.handleLeftButtonRelease = () => {
     if (isDragging && model.pickable) {
-      model.interactor.cancelAnimation(publicAPI);
+      model._interactor.cancelAnimation(publicAPI);
     }
     isDragging = false;
     model.widgetState.deactivate();
@@ -52,10 +52,10 @@ function widgetBehavior(publicAPI, model) {
       model.activeState &&
       model.activeState.getActive()
     ) {
-      model.manipulator.setNormal(model.camera.getDirectionOfProjection());
-      const worldCoords = model.manipulator.handleEvent(
+      // model.manipulator.setNormal(model.camera.getDirectionOfProjection());
+      const { worldCoords } = model.manipulator.handleEvent(
         callData,
-        model.apiSpecificRenderWindow
+        model._apiSpecificRenderWindow
       );
 
       if (worldCoords.length) {
@@ -70,7 +70,7 @@ function widgetBehavior(publicAPI, model) {
   // initialization
   // --------------------------------------------------------------------------
 
-  model.camera = model.renderer.getActiveCamera();
+  model.camera = model._renderer.getActiveCamera();
 
   model.classHierarchy.push('vtkBoxWidgetProp');
 }
@@ -85,6 +85,7 @@ function vtkBoxWidget(publicAPI, model) {
   // --- Widget Requirement ---------------------------------------------------
   model.behavior = widgetBehavior;
 
+  model.methodsToLink = ['scaleInPixels'];
   publicAPI.getRepresentationsForViewType = (viewType) => {
     switch (viewType) {
       case ViewTypes.DEFAULT:
@@ -202,7 +203,9 @@ function vtkBoxWidget(publicAPI, model) {
   const handles = model.widgetState.getStatesWithLabel('handles');
 
   // Default manipulator
-  model.manipulator = vtkPlaneManipulator.newInstance();
+  model.manipulator = vtkPlaneManipulator.newInstance({
+    useCameraNormal: true,
+  });
   handles.forEach((handle) => handle.setManipulator(model.manipulator));
 }
 

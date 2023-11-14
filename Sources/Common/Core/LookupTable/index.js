@@ -61,19 +61,20 @@ function vtkLookupTable(publicAPI, model) {
   publicAPI.usingLogScale = () => false;
 
   //----------------------------------------------------------------------------
-  publicAPI.getNumberOfAvailableColors = () => model.table.length;
+  publicAPI.getNumberOfAvailableColors = () => model.table.length / 4;
 
   //----------------------------------------------------------------------------
   // Apply shift/scale to the scalar value v and return the index.
   publicAPI.linearIndexLookup = (v, p) => {
     let dIndex = 0;
+    const nv = Number(v);
 
-    if (v < p.range[0]) {
+    if (nv < p.range[0]) {
       dIndex = p.maxIndex + BELOW_RANGE_COLOR_INDEX + 1.5;
-    } else if (v > p.range[1]) {
+    } else if (nv > p.range[1]) {
       dIndex = p.maxIndex + ABOVE_RANGE_COLOR_INDEX + 1.5;
     } else {
-      dIndex = (v + p.shift) * p.scale;
+      dIndex = (nv + p.shift) * p.scale;
 
       // This conditional is needed because when v is very close to
       // p.Range[1], it may map above p.MaxIndex in the linear mapping
@@ -92,12 +93,7 @@ function vtkLookupTable(publicAPI, model) {
       index = publicAPI.linearIndexLookup(v, p);
     }
     const offset = 4 * index;
-    return [
-      table[offset],
-      table[offset + 1],
-      table[offset + 2],
-      table[offset + 3],
-    ];
+    return table.slice(offset, offset + 4);
   };
 
   publicAPI.indexedLookupFunction = (v, table, p) => {
@@ -199,6 +195,8 @@ function vtkLookupTable(publicAPI, model) {
       ainc = (model.alphaRange[1] - model.alphaRange[0]) / maxIndex;
     }
 
+    model.table.length = 4 * maxIndex + 16;
+
     const hsv = [];
     const rgba = [];
     for (let i = 0; i <= maxIndex; i++) {
@@ -222,16 +220,44 @@ function vtkLookupTable(publicAPI, model) {
   };
 
   publicAPI.setTable = (table) => {
+    // Handle JS array (assume 2D array)
+    if (Array.isArray(table)) {
+      const nbComponents = table[0].length;
+      model.numberOfColors = table.length;
+      const colorOffset = 4 - nbComponents;
+      let offset = 0;
+      // fill table
+      for (let i = 0; i < model.numberOfColors; i++) {
+        model.table[i * 4] = 255;
+        model.table[i * 4 + 1] = 255;
+        model.table[i * 4 + 2] = 255;
+        model.table[i * 4 + 3] = 255;
+      }
+      // extract colors
+      for (let i = 0; i < table.length; i++) {
+        const color = table[i];
+        for (let j = 0; j < nbComponents; j++) {
+          model.table[offset++] = color[j];
+        }
+        offset += colorOffset;
+      }
+      publicAPI.buildSpecialColors();
+      model.insertTime.modified();
+      publicAPI.modified();
+      return true;
+    }
+
     if (table.getNumberOfComponents() !== 4) {
       vtkErrorMacro('Expected 4 components for RGBA colors');
-      return;
+      return false;
     }
     if (table.getDataType() !== VtkDataTypes.UNSIGNED_CHAR) {
       vtkErrorMacro('Expected unsigned char values for RGBA colors');
-      return;
+      return false;
     }
     model.numberOfColors = table.getNumberOfTuples();
     const data = table.getData();
+    model.table.length = data.length;
     for (let i = 0; i < data.length; i++) {
       model.table[i] = data[i];
     }
@@ -239,6 +265,7 @@ function vtkLookupTable(publicAPI, model) {
     publicAPI.buildSpecialColors();
     model.insertTime.modified();
     publicAPI.modified();
+    return true;
   };
 
   publicAPI.buildSpecialColors = () => {
@@ -296,6 +323,9 @@ function vtkLookupTable(publicAPI, model) {
   };
 
   if (model.table.length > 0) {
+    // Ensure that special colors are properly included in the table
+    publicAPI.buildSpecialColors();
+
     // ensure insertTime is more recently modified than buildTime if
     // a table is provided via the constructor
     model.insertTime.modified();

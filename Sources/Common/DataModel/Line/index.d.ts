@@ -1,4 +1,5 @@
-import { Vector3 } from '../../../types';
+import { quat } from 'gl-matrix';
+import { Vector3, Vector2, Nullable } from '../../../types';
 import vtkCell from '../Cell';
 
 export enum IntersectionState {
@@ -7,9 +8,11 @@ export enum IntersectionState {
 	ON_LINE,
 }
 
-interface ILineInitialValues { }
+export interface ILineInitialValues {
+	orientations: Nullable<quat[]>;
+}
 
-interface IIntersectWithLine {
+export interface IIntersectWithLine {
 	intersect: number;
 	t: number;
 	subId: number;
@@ -28,6 +31,18 @@ export interface vtkLine extends vtkCell {
 	 * Get the topological dimensional of the cell (0, 1, 2 or 3).
 	 */
 	getCellDimension(): number;
+
+	/**
+	 * Get the list of orientations (a list of quat) for each point of the line.
+	 * Can be null if the line is not oriented
+	 */
+	getOrientations(): Nullable<quat[]>;
+
+	/**
+	 * @see getOrientations
+	 * @param orientations The list of orientation per point of the centerline
+	 */
+	setOrientations(orientations: Nullable<quat[]>): boolean;
 
 	/**
 	 * Compute the intersection point of the intersection between line and line
@@ -50,6 +65,18 @@ export interface vtkLine extends vtkCell {
 	 * @param {Vector3} pcoords The parametric coordinates.
 	 */
 	intersectWithLine(p1: Vector3, p2: Vector3, tol: number, x: Vector3, pcoords: Vector3): IIntersectWithLine;
+
+	/**
+	 * Determine the global coordinates `x' and parametric coordinates `pcoords' in the cell.
+	 */
+	evaluateLocation(pcoords: Vector3, x: Vector3, weights: Vector2): void
+
+	/**
+	 * Determine the global orientation `q' and parametric coordinates `pcoords' in the cell.
+	 * Use slerp to interpolate orientation
+	 * Returns wether the orientation has been set in `q'
+	 */
+	evaluateOrientation(pcoords: Vector3, q: quat, weights: Vector2): boolean
 }
 
 /**
@@ -77,7 +104,7 @@ export function newInstance(initialValues?: ILineInitialValues): vtkLine;
  *   t: tolerance of the distance
  *   distance: quared distance between closest point and x
  * }
- * 
+ * ```
  * @static
  * @param {Vector3} x 
  * @param {Vector3} p1 
