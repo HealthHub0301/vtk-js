@@ -93,6 +93,31 @@ function vtkVolumeMapper(publicAPI, model) {
     publicAPI.setBlendMode(BlendMode.RADON_TRANSFORM_BLEND);
   };
 
+  // add set custom blend mode
+  publicAPI.setBlendModeToInterpolatedIntensity = () => {
+    publicAPI.setBlendMode(BlendMode.INTERPOLATED_BLEND);
+  };
+
+  publicAPI.setBlendModeToGradientOpacity = () => {
+    publicAPI.setBlendMode(BlendMode.GRADIENT_OPACITY_BLEND);
+  };
+
+  publicAPI.setBLendModeToCPRThickness = () => {
+    publicAPI.setBlendMode(BlendMode.CPR_THICKNESS_BLEND);
+  };
+
+  publicAPI.setBlendModeToReslicedAxialMPR = () => {
+    publicAPI.setBlendMode(BlendMode.RESLICE_MPR_AXIAL_BLEND);
+  };
+
+  publicAPI.setBlendModeToReslicedCoronalMPR = () => {
+    publicAPI.setBlendMode(BlendMode.RESLICE_MPR_CORONAL_BLEND);
+  };
+
+  publicAPI.setBlendModeToReslicedSagittalMPR = () => {
+    publicAPI.setBlendMode(BlendMode.RESLICE_MPR_SAGITTAL_BLEND);
+  };
+
   publicAPI.getBlendModeAsString = () =>
     macro.enumToString(BlendMode, model.blendMode);
 
