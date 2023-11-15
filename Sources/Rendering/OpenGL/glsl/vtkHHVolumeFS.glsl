@@ -567,11 +567,11 @@ vec4 getColorForValue(vec4 tValue, vec3 posIS, vec3 tstep)
   #if vtkNumComponents == 1
     vec4 tColor = texture2D(ctexture, vec2(tValue.r * cscale0 + cshift0, 0.5));
     tColor.a = goFactor.x*texture2D(otexture, vec2(tValue.r * oscale0 + oshift0, 0.5)).r;
-  #if vtkBlendMode == 6
-  if (normal0.w < GradientOpacityThreshold) {
-    tColor.a = tColor.a * (normal0.w / GradientOpacityThreshold);
-  }
-  #endif
+    #if vtkBlendMode == 1001
+      if (normal0.w < GradientOpacityThreshold) {
+        tColor.a = tColor.a * (normal0.w / GradientOpacityThreshold);
+      }
+    #endif
   #endif
 
   #if defined(vtkIndependentComponentsOn) && vtkNumComponents >= 2
@@ -1159,7 +1159,40 @@ void applyBlend(vec3 posIS, vec3 endIS, float sampleDistanceIS, vec3 tdims)
 
     gl_FragData[0] = getColorForValue(sum, posIS, tstep);
   #endif
-  #if vtkBlendMode == 5 // custom blend mode pre-integration
+  #if vtkBlendMode == 5 // RADON
+    float normalizedRayIntensity = 1.0;
+
+    // handle very thin volumes
+    if (raySteps <= 1.0)
+    {
+      tValue = getTextureValue(posIS);
+      normalizedRayIntensity = normalizedRayIntensity - sampleDistance*texture2D(otexture, vec2(tValue.r * oscale0 + oshift0, 0.5)).r;
+      gl_FragData[0] = texture2D(ctexture, vec2(normalizedRayIntensity, 0.5));
+      return;
+    }
+
+    posIS += (jitter*stepIS);
+
+    for (int i = 0; i < //VTK::MaximumSamplesValue ; ++i)
+    {
+      if (stepsTraveled + 1.0 >= raySteps) { break; }
+
+      // compute the scalar value
+      tValue = getTextureValue(posIS);
+
+      // Convert scalar value to normalizedRayIntensity coefficient and accumulate normalizedRayIntensity
+      normalizedRayIntensity = normalizedRayIntensity - sampleDistance*texture2D(otexture, vec2(tValue.r * oscale0 + oshift0, 0.5)).r;
+
+      posIS += stepIS;
+      stepsTraveled++;
+    }
+
+    // map normalizedRayIntensity to color
+    gl_FragData[0] = texture2D(ctexture, vec2(normalizedRayIntensity , 0.5));
+
+  #endif
+
+  #if vtkBlendMode == 1000 // custom blend mode pre-integration
 
     // now map through opacity and color
     tColor = getColorForValue(tValue, posIS, tstep);
@@ -1218,7 +1251,7 @@ void applyBlend(vec3 posIS, vec3 endIS, float sampleDistanceIS, vec3 tdims)
     gl_FragData[0] = vec4(color.rgb/color.a, color.a);
 
     #endif
-    #if vtkBlendMode == 6 // custom blend mode gradiant opacity
+    #if vtkBlendMode == 1001 // custom blend mode gradiant opacity
 
     // now map through opacity and color
     tColor = getColorForValue(tValue, posIS, tstep);
@@ -1275,7 +1308,7 @@ void applyBlend(vec3 posIS, vec3 endIS, float sampleDistanceIS, vec3 tdims)
     gl_FragData[0] = vec4(color.rgb/color.a, color.a);
 
     #endif
-    #if vtkBlendMode == 7
+    #if vtkBlendMode == 1002
 
     //gl_fragcoord 는 pixel 좌표입니다. 픽셀좌표를 해상도로 나누어서 0~1범위로 로 변경합니다.
     vec2 st = gl_FragCoord.xy / canvasSize;
@@ -1368,27 +1401,27 @@ void applyBlend(vec3 posIS, vec3 endIS, float sampleDistanceIS, vec3 tdims)
     gl_FragData[0] = windowing(acc);
 
     #endif
-    #if vtkBlendMode == 8 || vtkBlendMode == 9 || vtkBlendMode == 10
+    #if vtkBlendMode == 1003 || vtkBlendMode == 1004 || vtkBlendMode == 1005
 
     vec3 rayStart = vec3(0.0);
     vec3 tRay = vec3(0.0);
     vec3 scale = 1.0 / mprScale;
 
-    #if vtkBlendMode == 8
+    #if vtkBlendMode == 1003
     //rayStart = mprCrossPoint * vVCToIJK;
     rayStart  = axialPlaneCenter;
     rayStart += axialCross * (gl_FragCoord.x - 0.5 * canvasSize.x) * scale.x;
     rayStart += axialUp    * (gl_FragCoord.y - 0.5 * canvasSize.y) * scale.x;
     rayStart *= vVCToIJK;
     tRay = axialNormal * vVCToIJK;
-    #elif vtkBlendMode == 9
+    #elif vtkBlendMode == 1004
     //rayStart = mprCrossPoint * vVCToIJK;
     rayStart  = coronalPlaneCenter;
     rayStart += coronalCross *(gl_FragCoord.x - 0.5 * canvasSize.x) * scale.y;
     rayStart += coronalUp    * (gl_FragCoord.y - 0.5 * canvasSize.y) * scale.y;
     rayStart *= vVCToIJK;
     tRay = coronalNormal * vVCToIJK;
-    #elif vtkBlendMode == 10
+    #elif vtkBlendMode == 1005
     //rayStart = mprCrossPoint * vVCToIJK;
     rayStart  = sagittalPlaneCenter;
     rayStart += sagittalCross * (gl_FragCoord.x - 0.5 * canvasSize.x) * scale.z;
@@ -1426,7 +1459,7 @@ void applyBlend(vec3 posIS, vec3 endIS, float sampleDistanceIS, vec3 tdims)
       //alpha 값도 적용
     }
 
-     acc /=  float(thickness + 1);
+    acc /=  float(thickness + 1);
     //tValue = getTextureValue(rayStart);
 
     //windowing 함수 적용 및 출력

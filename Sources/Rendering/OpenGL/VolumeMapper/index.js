@@ -23,7 +23,7 @@ import {
 import { BlendMode } from 'vtk.js/Sources/Rendering/Core/VolumeMapper/Constants';
 import { registerOverride } from 'vtk.js/Sources/Rendering/OpenGL/ViewNodeFactory';
 import vtkVolumeVS from 'vtk.js/Sources/Rendering/OpenGL/glsl/vtkVolumeVS.glsl';
-import vtkVolumeFS from 'vtk.js/Sources/Rendering/OpenGL/glsl/vtkVolumeFS.glsl';
+import vtkVolumeFS from 'vtk.js/Sources/Rendering/OpenGL/glsl/vtkHHVolumeFS.glsl';
 
 const { vtkWarningMacro, vtkErrorMacro } = macro;
 
