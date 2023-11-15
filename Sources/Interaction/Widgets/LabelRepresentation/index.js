@@ -84,7 +84,7 @@ function vtkLabelRepresentation(publicAPI, model) {
     if (model.interactionState === InteractionState.SELECTING) {
       const center = model.point.getCenter();
       const displayCenter = vtkInteractorObserver.computeWorldToDisplay(
-        model._renderer,
+        model.renderer,
         center[0],
         center[1],
         center[2]
@@ -93,14 +93,14 @@ function vtkLabelRepresentation(publicAPI, model) {
 
       const worldStartEventPosition =
         vtkInteractorObserver.computeDisplayToWorld(
-          model._renderer,
+          model.renderer,
           model.lastEventPosition[0],
           model.lastEventPosition[1],
           focalDepth
         );
 
       const worldCurrentPosition = vtkInteractorObserver.computeDisplayToWorld(
-        model._renderer,
+        model.renderer,
         eventPos[0],
         eventPos[1],
         focalDepth

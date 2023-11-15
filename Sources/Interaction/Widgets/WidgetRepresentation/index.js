@@ -13,7 +13,7 @@ function vtkWidgetRepresentation(publicAPI, model) {
   model.classHierarchy.push('vtkWidgetRepresentation');
 
   publicAPI.getPickedActor = (x, y, z, picker) => {
-    picker.pick(x, y, z, model._renderer);
+    picker.pick(x, y, z, model.renderer);
     return picker.getActors[0];
   };
 
@@ -38,7 +38,7 @@ function vtkWidgetRepresentation(publicAPI, model) {
   };
 
   publicAPI.sizeHandlesInPixels = (factor, pos) => {
-    const renderer = model._renderer;
+    const renderer = model.renderer;
     if (!model.validPick || !renderer || !renderer.getActiveCamera()) {
       return model.handleSize * factor * model.initialLength;
     }
@@ -77,7 +77,7 @@ function vtkWidgetRepresentation(publicAPI, model) {
   };
 
   publicAPI.sizeHandlesRelativeToViewport = (factor, pos) => {
-    const renderer = model._renderer;
+    const renderer = model.renderer;
     if (!model.validPick || !renderer || !renderer.getActiveCamera()) {
       return model.handleSize * factor * model.initialLength;
     }

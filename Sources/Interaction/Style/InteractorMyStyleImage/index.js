@@ -159,7 +159,7 @@ function vtkInteractorMyStyleImage(publicAPI, model) {
   publicAPI.windowLevel = (renderer, position) => {
     model.windowLevelCurrentPosition[0] = position.x;
     model.windowLevelCurrentPosition[1] = position.y;
-    const rwi = model.interactor;
+    const rwi = model._interactor;
 
     if (model.currentImageProperty) {
       const size = rwi.getView().getViewportSize(renderer);
@@ -215,7 +215,7 @@ function vtkInteractorMyStyleImage(publicAPI, model) {
   //----------------------------------------------------------------------------
   publicAPI.handleMouseDolly = (renderer, position) => {
     const dy = position.y - model.previousPosition.y;
-    const rwi = model.interactor;
+    const rwi = model._interactor;
     const center = rwi.getView().getViewportCenter(renderer);
     const dyf = (model.motionFactor * dy) / center[1];
 
@@ -238,14 +238,14 @@ function vtkInteractorMyStyleImage(publicAPI, model) {
       }
     }
 
-    if (model.interactor.getLightFollowCamera()) {
+    if (model._interactor.getLightFollowCamera()) {
       renderer.updateLightsGeometryToFollowCamera();
     }
   };
 
   //----------------------------------------------------------------------------
   publicAPI.slice = (renderer, position) => {
-    const rwi = model.interactor;
+    const rwi = model._interactor;
 
     const dy = position.y - model.lastSlicePosition;
 
@@ -289,7 +289,7 @@ function vtkInteractorMyStyleImage(publicAPI, model) {
       return;
     }
 
-    const renderer = model.interactor.getCurrentRenderer();
+    const renderer = model._interactor.getCurrentRenderer();
     if (!renderer) {
       return;
     }

@@ -83,11 +83,11 @@ function vtkResliceCursorLineRepresentation(publicAPI, model) {
     model.resliceCursorActor.getCursorAlgorithm();
 
   publicAPI.displayToReslicePlaneIntersection = (displayPosition) => {
-    const activeCamera = model._renderer.getActiveCamera();
+    const activeCamera = model.renderer.getActiveCamera();
     const cameraPosition = activeCamera.getPosition();
     const resliceCursor = publicAPI.getResliceCursor();
 
-    const worldEventPosition = displayToWorld(displayPosition, model._renderer);
+    const worldEventPosition = displayToWorld(displayPosition, model.renderer);
 
     if (!resliceCursor) {
       return null;
@@ -110,7 +110,7 @@ function vtkResliceCursorLineRepresentation(publicAPI, model) {
   publicAPI.computeInteractionState = (displayPos) => {
     model.interactionState = InteractionState.OUTSIDE;
 
-    if (!model._renderer || !model.resliceCursorActor.getVisibility()) {
+    if (!model.renderer || !model.resliceCursorActor.getVisibility()) {
       return model.interactionState;
     }
 
@@ -132,7 +132,7 @@ function vtkResliceCursorLineRepresentation(publicAPI, model) {
     // Picking Axis1 interaction:
     const axis1PolyData = resliceCursor.getCenterlineAxisPolyData(axis1);
     const isAxis1Picked = isAxisPicked(
-      model._renderer,
+      model.renderer,
       model.tolerance,
       axis1PolyData,
       displayPos
@@ -142,7 +142,7 @@ function vtkResliceCursorLineRepresentation(publicAPI, model) {
     const axis2 = model.resliceCursorActor.getCursorAlgorithm().getAxis2();
     const axis2PolyData = resliceCursor.getCenterlineAxisPolyData(axis2);
     const isAxis2Picked = isAxisPicked(
-      model._renderer,
+      model.renderer,
       model.tolerance,
       axis2PolyData,
       displayPos
@@ -153,7 +153,7 @@ function vtkResliceCursorLineRepresentation(publicAPI, model) {
 
     if (isCenterPicked) {
       const displayCenterPosition = vtkInteractorObserver.computeWorldToDisplay(
-        model._renderer,
+        model.renderer,
         resliceCursor.getCenter()[0],
         resliceCursor.getCenter()[1],
         resliceCursor.getCenter()[2]
@@ -206,7 +206,7 @@ function vtkResliceCursorLineRepresentation(publicAPI, model) {
 
     if (
       model.interactionState === InteractionState.OUTSIDE ||
-      !model._renderer ||
+      !model.renderer ||
       !resliceCursor
     ) {
       model.lastEventPosition[0] = displayPosition[0];
@@ -369,8 +369,8 @@ function vtkResliceCursorLineRepresentation(publicAPI, model) {
     // When the reslice plane is changed, update the camera to look at the
     // normal to the reslice plane always.
 
-    const focalPoint = model._renderer.getActiveCamera().getFocalPoint();
-    const position = model._renderer.getActiveCamera().getPosition();
+    const focalPoint = model.renderer.getActiveCamera().getFocalPoint();
+    const position = model.renderer.getActiveCamera().getPosition();
     const normalPlane = publicAPI.getResliceCursor().getPlane(normalAxis);
     const normal = normalPlane.getNormal();
 
@@ -393,7 +393,7 @@ function vtkResliceCursorLineRepresentation(publicAPI, model) {
     );
     const newFocalPoint = intersection.x;
 
-    model._renderer
+    model.renderer
       .getActiveCamera()
       .setFocalPoint(newFocalPoint[0], newFocalPoint[1], newFocalPoint[2]);
 
@@ -403,7 +403,7 @@ function vtkResliceCursorLineRepresentation(publicAPI, model) {
       newFocalPoint[2] + distance * normal[2],
     ];
 
-    model._renderer
+    model.renderer
       .getActiveCamera()
       .setPosition(
         newCameraPosition[0],
@@ -412,7 +412,7 @@ function vtkResliceCursorLineRepresentation(publicAPI, model) {
       );
 
     // Renderer may not have yet actor bounds
-    const rendererBounds = model._renderer.computeVisiblePropBounds();
+    const rendererBounds = model.renderer.computeVisiblePropBounds();
     const bounds = publicAPI.getBounds();
     rendererBounds[0] = Math.min(bounds[0], rendererBounds[0]);
     rendererBounds[1] = Math.max(bounds[1], rendererBounds[1]);
@@ -422,22 +422,22 @@ function vtkResliceCursorLineRepresentation(publicAPI, model) {
     rendererBounds[5] = Math.max(bounds[5], rendererBounds[5]);
 
     // Don't clip away any part of the data.
-    model._renderer.resetCameraClippingRange(rendererBounds);
+    model.renderer.resetCameraClippingRange(rendererBounds);
   };
 
   /**
    * Reimplemented to look at image center instead of reslice cursor.
    */
   publicAPI.resetCamera = () => {
-    if (model._renderer) {
+    if (model.renderer) {
       const normalAxis = publicAPI.getCursorAlgorithm().getReslicePlaneNormal();
       const normal = publicAPI
         .getResliceCursor()
         .getPlane(normalAxis)
         .getNormal();
       const viewUp = publicAPI.getResliceCursor().getViewUp(normalAxis);
-      const focalPoint = model._renderer.getActiveCamera().getFocalPoint();
-      const position = model._renderer.getActiveCamera().getPosition();
+      const focalPoint = model.renderer.getActiveCamera().getFocalPoint();
+      const position = model.renderer.getActiveCamera().getPosition();
 
       // Distance is preserved
       const distance = Math.sqrt(
@@ -450,7 +450,7 @@ function vtkResliceCursorLineRepresentation(publicAPI, model) {
         focalPoint[2] + distance * normal[2],
       ];
 
-      model._renderer
+      model.renderer
         .getActiveCamera()
         .setPosition(
           newCameraPosition[0],
@@ -458,7 +458,7 @@ function vtkResliceCursorLineRepresentation(publicAPI, model) {
           newCameraPosition[2]
         );
 
-      model._renderer
+      model.renderer
         .getActiveCamera()
         .setViewUp(viewUp[0], viewUp[1], viewUp[2]);
     }

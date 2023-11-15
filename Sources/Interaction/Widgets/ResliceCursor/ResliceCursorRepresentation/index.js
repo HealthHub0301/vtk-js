@@ -142,9 +142,9 @@ function vtkResliceCursorRepresentation(publicAPI, model) {
   };
 
   publicAPI.resetCamera = () => {
-    if (model._renderer) {
+    if (model.renderer) {
       const center = publicAPI.getResliceCursor().getCenter();
-      model._renderer
+      model.renderer
         .getActiveCamera()
         .setFocalPoint(center[0], center[1], center[2]);
 
@@ -156,12 +156,12 @@ function vtkResliceCursorRepresentation(publicAPI, model) {
 
       const cameraPosition = [];
       vtkMath.add(center, normal, cameraPosition);
-      model._renderer
+      model.renderer
         .getActiveCamera()
         .setPosition(cameraPosition[0], cameraPosition[1], cameraPosition[2]);
 
-      model._renderer.resetCamera();
-      model._renderer.resetCameraClippingRange();
+      model.renderer.resetCamera();
+      model.renderer.resetCameraClippingRange();
     }
   };
 
