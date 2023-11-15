@@ -6,12 +6,12 @@ import { States } from 'vtk.js/Sources/Rendering/Core/InteractorStyle/Constants'
 import { State } from '../../Widgets/LineRepresentation/Constants';
 
 // ----------------------------------------------------------------------------
-// vtkInteractorMyStyleImage methods
+// vtkInteractorHHStyleImage methods
 // ----------------------------------------------------------------------------
 
-function vtkInteractorMyStyleImage(publicAPI, model) {
+function vtkInteractorHHStyleImage(publicAPI, model) {
   // Set our className
-  model.classHierarchy.push('vtkInteractorMyStyleImage');
+  model.classHierarchy.push('vtkInteractorHHStyleImage');
 
   // Public API methods
   publicAPI.superHandleMouseMove = publicAPI.handleMouseMove;
@@ -356,12 +356,12 @@ export function extend(publicAPI, model, initialValues = {}) {
   // For more macro methods, see "Sources/macros.js"
 
   // Object specific methods
-  vtkInteractorMyStyleImage(publicAPI, model);
+  vtkInteractorHHStyleImage(publicAPI, model);
 }
 
 // ----------------------------------------------------------------------------
 
-export const newInstance = macro.newInstance(extend, 'vtkInteractorMyStyleImage');
+export const newInstance = macro.newInstance(extend, 'vtkInteractorHHStyleImage');
 
 // ----------------------------------------------------------------------------
 
