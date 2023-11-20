@@ -1354,7 +1354,9 @@ function vtkOpenGLTexture(publicAPI, model) {
     depth,
     numComps,
     dataType,
-    data
+    data,
+    rescaleSlope,
+    rescaleIntercept
   ) => {
     // Permit OpenGLDataType to be half float, if applicable, for 3D
     publicAPI.getOpenGLDataType(dataType);
@@ -1378,6 +1380,9 @@ function vtkOpenGLTexture(publicAPI, model) {
     publicAPI.createTexture();
     publicAPI.bind();
     // Create an array of texture with one texture
+    for (let i = 0; i < data.length; i++) {
+      data[i] = data[i] * rescaleSlope + rescaleIntercept;
+    }
     const dataArray = [data];
     const is3DArray = true;
     const pixData = updateArrayDataType(dataType, dataArray, is3DArray);
@@ -1536,7 +1541,9 @@ function vtkOpenGLTexture(publicAPI, model) {
           depth,
           numComps,
           dataType,
-          data
+          data,
+          rescaleSlope,
+          rescaleIntercept
         );
       }
       if (
@@ -1568,7 +1575,9 @@ function vtkOpenGLTexture(publicAPI, model) {
           depth,
           numComps,
           dataType,
-          data
+          data,
+          rescaleSlope,
+          rescaleIntercept
         );
       }
       if (dataType === VtkDataTypes.UNSIGNED_CHAR) {
@@ -1593,9 +1602,8 @@ function vtkOpenGLTexture(publicAPI, model) {
       const scaleInverse = scaleOffsetsCopy.scale.map((s) => 1 / s);
       for (let i = 0; i < numPixelsIn; i++) {
         for (let nc = 0; nc < numComps; nc++) {
-          newArray[count] = data[count] * rescaleSlope + rescaleIntercept;
           newArray[count] =
-            (newArray[count] - scaleOffsetsCopy.offset[nc]) * scaleInverse[nc];
+            (data[count] - scaleOffsetsCopy.offset[nc]) * scaleInverse[nc];
           count++;
         }
       }
