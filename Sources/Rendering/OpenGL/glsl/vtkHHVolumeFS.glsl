@@ -222,6 +222,9 @@ uniform float cshift3;
 uniform float cscale3;
 #endif
 
+uniform float rescaleSlope;
+uniform float rescaleIntercept;
+
 uniform vec4 ipScalarRangeMin;
 uniform vec4 ipScalarRangeMax;
 
@@ -247,7 +250,7 @@ uniform highp sampler3D texture1;
 
 vec4 getTextureValue(vec3 pos)
 {
-  vec4 tmp = texture(texture1, pos);
+  vec4 tmp = texture(texture1, pos) * rescaleSlope + rescaleIntercept;
 #if vtkNumComponents == 1
   tmp.a = tmp.r;
 #endif

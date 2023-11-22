@@ -1066,6 +1066,12 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
       program.setUniformf(`cshift${i}`, cshift);
       program.setUniformf(`cscale${i}`, cScale);
     }
+    program.setUniformf('rescaleSlope', model.renderable.getRescaleSlope());
+    program.setUniformf(
+      'rescaleIntercept',
+      model.renderable.getRescaleIntercept() /
+        (model.renderable.getPixelRange() / 2)
+    );
 
     if (model.gopacity) {
       if (iComps) {
@@ -1855,9 +1861,7 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
         dims[1],
         dims[2],
         scalars,
-        model.renderable.getPreferSizeOverAccuracy(),
-        model.renderable.getRescaleSlope(),
-        model.renderable.getRescaleIntercept(),
+        model.renderable.getPreferSizeOverAccuracy()
       );
       model.scalarTextureString = toString;
       if (scalars) {

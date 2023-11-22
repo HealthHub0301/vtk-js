@@ -1354,9 +1354,7 @@ function vtkOpenGLTexture(publicAPI, model) {
     depth,
     numComps,
     dataType,
-    data,
-    rescaleSlope,
-    rescaleIntercept
+    data
   ) => {
     // Permit OpenGLDataType to be half float, if applicable, for 3D
     publicAPI.getOpenGLDataType(dataType);
@@ -1380,9 +1378,6 @@ function vtkOpenGLTexture(publicAPI, model) {
     publicAPI.createTexture();
     publicAPI.bind();
     // Create an array of texture with one texture
-    for (let i = 0; i < data.length; i++) {
-      data[i] = data[i] * rescaleSlope + rescaleIntercept;
-    }
     const dataArray = [data];
     const is3DArray = true;
     const pixData = updateArrayDataType(dataType, dataArray, is3DArray);
@@ -1462,9 +1457,7 @@ function vtkOpenGLTexture(publicAPI, model) {
     numberOfComponents,
     dataType,
     values,
-    preferSizeOverAccuracy = false,
-    rescaleSlope = 1,
-    rescaleIntercept = 0
+    preferSizeOverAccuracy = false
   ) =>
     publicAPI.create3DFilterableFromDataArray(
       width,
@@ -1475,9 +1468,7 @@ function vtkOpenGLTexture(publicAPI, model) {
         dataType,
         values,
       }),
-      preferSizeOverAccuracy,
-      rescaleSlope,
-      rescaleIntercept
+      preferSizeOverAccuracy
     );
 
   //----------------------------------------------------------------------------
@@ -1487,9 +1478,7 @@ function vtkOpenGLTexture(publicAPI, model) {
     height,
     depth,
     dataArray,
-    preferSizeOverAccuracy = false,
-    rescaleSlope = 1,
-    rescaleIntercept = 0
+    preferSizeOverAccuracy = false
   ) => {
     const { numComps, dataType, data, scaleOffsets } = processDataArray(
       dataArray,
@@ -1541,9 +1530,7 @@ function vtkOpenGLTexture(publicAPI, model) {
           depth,
           numComps,
           dataType,
-          data,
-          rescaleSlope,
-          rescaleIntercept
+          data
         );
       }
       if (
@@ -1575,9 +1562,7 @@ function vtkOpenGLTexture(publicAPI, model) {
           depth,
           numComps,
           dataType,
-          data,
-          rescaleSlope,
-          rescaleIntercept
+          data
         );
       }
       if (dataType === VtkDataTypes.UNSIGNED_CHAR) {
