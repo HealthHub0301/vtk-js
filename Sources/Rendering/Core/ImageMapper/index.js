@@ -293,10 +293,14 @@ const DEFAULT_VALUES = {
   MprThickness: 1,
   MprSlicingMode: 2,
   MprMode: 0,
+  originalData: null,
   slice: 0,
   // <--------------------->
   RescaleSlope: 1,
   RescaleIntercept: 0,
+  XdimSize: 0,
+  YdimSize: 0,
+  ZdimSize: 0,
 };
 
 // ----------------------------------------------------------------------------
@@ -317,8 +321,12 @@ export function extend(publicAPI, model, initialValues = {}) {
     'MprThickness',
     'MprSlicingMode',
     'MprMode',
+    'originalData',
     'RescaleSlope',
     'RescaleIntercept',
+    'XdimSize',
+    'YdimSize',
+    'ZdimSize',
     'slice',
     // <--------------------->
   ]);

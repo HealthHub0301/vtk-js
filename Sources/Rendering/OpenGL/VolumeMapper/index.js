@@ -983,13 +983,14 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
     //Gradient Opacity 의 threshold값 설정
     program.setUniformf('GradientOpacityThreshold', 0.1);
 
-    const dicom = DATA.getDicoms()[0];
-    const windowCenter = dicom.windowCenter;
-    const windowWidth = dicom.windowWidth;
+    const windowCenter = model.renderable.getWindowCenter();
+    const windowWidth = model.renderable.getWindowWidth();
     const lowerGreyLevel = windowCenter - windowWidth * 0.5;
     const upperGreyLevel = windowCenter + windowWidth * 0.5;
-    const adjustedLowerGreyLevel = (lowerGreyLevel - DATA.getVolume().min) / (DATA.getVolume().max - DATA.getVolume().min);
-    const adjustedUpperGreyLevel = (upperGreyLevel - DATA.getVolume().min) / (DATA.getVolume().max - DATA.getVolume().min);
+    const min = model.scalarTexture.getVolumeInfo().dataComputedOffset[0];
+    const max = model.scalarTexture.getVolumeInfo().dataComputedScale[0] + min;
+    const adjustedLowerGreyLevel = (lowerGreyLevel - min) / (max - min);
+    const adjustedUpperGreyLevel = (upperGreyLevel - min) / (max - min);
     program.setUniformf('lowerGreyLevel', adjustedLowerGreyLevel);
     program.setUniformf('upperGreyLevel', adjustedUpperGreyLevel);
 
