@@ -158,8 +158,8 @@ uniform vec3 mprScale;
 uniform float GradientOpacityThreshold;
 
 // windowing 값
-uniform float lowerGreyLevel;
-uniform float upperGreyLevel;
+uniform float windowCenter;
+uniform float windowWidth;
 
 // canvas 크기의 pixel size
 uniform vec2 canvasSize;
@@ -224,6 +224,7 @@ uniform float cscale3;
 
 uniform float rescaleSlope;
 uniform float rescaleIntercept;
+uniform float pixelRange;
 
 uniform vec4 ipScalarRangeMin;
 uniform vec4 ipScalarRangeMax;
@@ -1478,33 +1479,13 @@ vec4 getSumColorForValue(vec4 tValue, vec4 tValue2, vec3 posIS, vec3 tstep)
 #endif
 return tColor;
 }
-vec4 windowing(float value)
+vec4 windowing(float value) // value [-1, 1]
 {
   vec4 pixelData = vec4(0.0, 0.0, 0.0, 0.0);
-
-  float gradient = 1.0 / (upperGreyLevel - lowerGreyLevel);
-  if (value <= lowerGreyLevel)
-  {
-    pixelData.r = 0.0;
-    pixelData.g = 0.0;
-    pixelData.b = 0.0;
-  }
-    else if (value > upperGreyLevel)
-  {
-    pixelData.r = 1.0;
-    pixelData.g = 1.0;
-    pixelData.b = 1.0;
-  }
-  else
-  {
-    pixelData.r = gradient * value - lowerGreyLevel * gradient;
-    pixelData.g = gradient * value - lowerGreyLevel * gradient;
-    pixelData.b = gradient * value - lowerGreyLevel * gradient;
-  }
-
-  pixelData.a = 1.0;
-
-  return pixelData;
+  value = value * pixelRange / 2.0; // value [-r/2, r/2]
+  float scaledValue = (value - windowCenter) / windowWidth + 0.5;
+  float clampedValue = clamp(scaledValue, 0.0, 1.0);
+  return vec4(clampedValue, clampedValue, clampedValue, 1.0);
 }
 
 bool valueWithinScalarRange(vec4 val, vec4 min, vec4 max) {

@@ -985,14 +985,8 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
 
     const windowCenter = model.renderable.getWindowCenter();
     const windowWidth = model.renderable.getWindowWidth();
-    const lowerGreyLevel = windowCenter - windowWidth * 0.5;
-    const upperGreyLevel = windowCenter + windowWidth * 0.5;
-    const min = model.scalarTexture.getVolumeInfo().dataComputedOffset[0];
-    const max = model.scalarTexture.getVolumeInfo().dataComputedScale[0] + min;
-    const adjustedLowerGreyLevel = (lowerGreyLevel - min) / (max - min);
-    const adjustedUpperGreyLevel = (upperGreyLevel - min) / (max - min);
-    program.setUniformf('lowerGreyLevel', adjustedLowerGreyLevel);
-    program.setUniformf('upperGreyLevel', adjustedUpperGreyLevel);
+    program.setUniformf('windowCenter', windowCenter);
+    program.setUniformf('windowWidth', windowWidth);
 
     const canvasSize = model._openGLRenderWindow.getSize();
     program.setUniform2f('canvasSize', canvasSize[0], canvasSize[1]);
@@ -1076,6 +1070,7 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
       model.renderable.getRescaleIntercept() /
         (model.renderable.getPixelRange() / 2)
     );
+    program.setUniformf('pixelRange', model.renderable.getPixelRange());
 
     if (model.gopacity) {
       if (iComps) {
