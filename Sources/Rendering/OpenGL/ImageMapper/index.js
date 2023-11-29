@@ -569,7 +569,11 @@ function vtkOpenGLImageMapper(publicAPI, model) {
     // volume 좌표를 shader에서 사용하는 좌표로 변경해야 합니다.
     // 쉐이더는 volume좌표를 0~1범위로 변경해서 사용합니다.
     // 해당 계산을 위해 필요한 값을 전송합니다.
-    const ext = DATA.getVolume().getExtends();
+    const ext = [
+      model.renderable.getXdimSize(),
+      model.renderable.getYdimSize(),
+      model.renderable.getZdimSize(),
+    ];
     const vsize = new Float64Array(3);
     vec3.set(vsize, Number(ext[0]), Number(ext[1]), Number(ext[2]));
     const vctoijk = new Float64Array(3);
@@ -1125,21 +1129,32 @@ function vtkOpenGLImageMapper(publicAPI, model) {
     // <--------------------->
     // <--텍스처에 볼륨 데이터를 저장-->
     if (model.volumeTextureString != 1) {
-      const volume = DATA.getVolume();
-      const volScalars = volume.getVTKImage().getPointData().getScalars();
+      const openglDataType = model.currentInput
+        .getPointData()
+        .getScalars()
+        .getDataType();
+      const volScalars = model.renderable
+        .getOriginalData()
+        ?.getPointData()
+        ?.getScalars();
 
-      if (model.renderable.getMprMode()) {
+      const dim = [
+        model.renderable.getXdimSize(),
+        model.renderable.getYdimSize(),
+        model.renderable.getZdimSize(),
+      ];
+
+      if (model.renderable.getMprMode() && volScalars) {
         // <--텍스처에 저장할 볼륨 데이터-->
         // <--------------------->
-        const dims = volume.getExtends();
         // rebuild the scalarTexture if the data has changed
 
         model.volumeTexture.releaseGraphicsResources(model._openGLRenderWindow);
         model.volumeTexture.resetFormatAndType();
         model.volumeTexture.create3DFilterableFromRaw(
-          Number(dims[0]),
-          Number(dims[1]),
-          Number(dims[2]),
+          Number(dim[0]),
+          Number(dim[1]),
+          Number(dim[2]),
           numComp,
           volScalars.getDataType(),
           volScalars.getData(),
@@ -1155,7 +1170,7 @@ function vtkOpenGLImageMapper(publicAPI, model) {
           1,
           1,
           numComp,
-          volScalars.getDataType(),
+          openglDataType,
           new Uint16Array(1).fill(1),
           true
         );

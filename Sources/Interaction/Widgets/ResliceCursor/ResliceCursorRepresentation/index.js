@@ -51,6 +51,7 @@ function vtkResliceCursorRepresentation(publicAPI, model) {
       if (image) {
         model.reslice.setInputData(image);
         model.imageActor.setVisibility(model.showReslicedImage);
+        model.imageMapper.setOriginalData(image);
 
         const modifiedTime = Math.max(
           publicAPI.getMTime(),
