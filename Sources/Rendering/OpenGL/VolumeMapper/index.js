@@ -1003,24 +1003,6 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
       program.setUniformf('cprThickness', cprThickness);
     }
 
-    program.setUniformf('mprThickness', model.renderable.getMprThickness());
-    program.setUniform3fArray('mprScale', model.renderable.getMprScale());
-
-    program.setUniform3fArray('axialUp', model.renderable.getAxialUp());
-    program.setUniform3fArray('axialCross', model.renderable.getAxialCross());
-    program.setUniform3fArray('axialNormal', model.renderable.getAxialNormal());
-    program.setUniform3fArray('axialPlaneCenter', model.renderable.getAxialPlaneCenter());
-
-    program.setUniform3fArray('coronalUp', model.renderable.getCoronalUp());
-    program.setUniform3fArray('coronalCross', model.renderable.getCoronalCross());
-    program.setUniform3fArray('coronalNormal', model.renderable.getCoronalNormal());
-    program.setUniform3fArray('coronalPlaneCenter', model.renderable.getCoronalPlaneCenter());
-
-    program.setUniform3fArray('sagittalUp', model.renderable.getSagittalUp());
-    program.setUniform3fArray('sagittalCross', model.renderable.getSagittalCross());
-    program.setUniform3fArray('sagittalNormal', model.renderable.getSagittalNormal());
-    program.setUniform3fArray('sagittalPlaneCenter', model.renderable.getSagittalPlaneCenter());
-
     program.setUniformi('ctexture', model.colorTexture.getTextureUnit());
     program.setUniformi('sctexture', model.scolorTexture.getTextureUnit());
     program.setUniformi('otexture', model.opacityTexture.getTextureUnit());
