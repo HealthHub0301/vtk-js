@@ -106,18 +106,6 @@ function vtkVolumeMapper(publicAPI, model) {
     publicAPI.setBlendMode(BlendMode.CPR_THICKNESS_BLEND);
   };
 
-  publicAPI.setBlendModeToReslicedAxialMPR = () => {
-    publicAPI.setBlendMode(BlendMode.RESLICE_MPR_AXIAL_BLEND);
-  };
-
-  publicAPI.setBlendModeToReslicedCoronalMPR = () => {
-    publicAPI.setBlendMode(BlendMode.RESLICE_MPR_CORONAL_BLEND);
-  };
-
-  publicAPI.setBlendModeToReslicedSagittalMPR = () => {
-    publicAPI.setBlendMode(BlendMode.RESLICE_MPR_SAGITTAL_BLEND);
-  };
-
   publicAPI.getBlendModeAsString = () =>
     macro.enumToString(BlendMode, model.blendMode);
 
@@ -185,25 +173,11 @@ const DEFAULT_VALUES = {
   cprPoints: null,
   cprPositionMap: null,
   cprImageWidth: 0,
-  mprThickness: 1.0,
-  mprScale: [1, 1, 1],
   pixelRange: 65536,
   rescaleSlope: 1,
   rescaleIntercept: 0,
   windowWidth: 65535,
   windowCenter: 32767.5,
-  axialUp: [0, 1, 0],
-  axialCross: [1, 0, 0],
-  axialNormal: [0, 0, 1],
-  axialPlaneCenter: [0, 0, 0],
-  coronalUp: [0, 0, 1],
-  coronalCross:  [1, 0, 0],
-  coronalNormal: [0, -1, 0],
-  coronalPlaneCenter: [0, 0, 0],
-  sagittalUp: [0, 1, 0],
-  sagittalCross: [0, 0, -1],
-  sagittalNormal: [1, 0, 0],
-  sagittalPlaneCenter: [0, 0, 0],
   //<--영역 선택 기능이 작동 중인지 여부를 판별하는 파라미터 추가-->
   paintMode: false,
   //<--------------------->
@@ -242,25 +216,11 @@ export function extend(publicAPI, model, initialValues = {}) {
     'cprPoints',
     'cprPositionMap',
     'cprImageWidth',
-    'mprThickness',
-    'mprScale',
     'pixelRange',
     'rescaleSlope',
     'rescaleIntercept',
     'windowWidth',
     'windowCenter',
-    'axialUp',
-    'axialCross',
-    'axialNormal',
-    'axialPlaneCenter',
-    'coronalUp',
-    'coronalCross',
-    'coronalNormal',
-    'coronalPlaneCenter',
-    'sagittalUp',
-    'sagittalCross',
-    'sagittalNormal',
-    'sagittalPlaneCenter',
     //<--영역 선택 기능이 작동 중인지 여부를 판별하는 파라미터 추가-->
     'paintMode',
     //<--------------------->

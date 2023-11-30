@@ -135,25 +135,6 @@ uniform float ciheight;
 uniform float cprScale;
 uniform vec2 cprCenter;
 
-uniform vec3 axialUp;
-uniform vec3 axialCross;
-uniform vec3 axialNormal;
-uniform vec3 axialPlaneCenter;
-
-uniform vec3 coronalUp;
-uniform vec3 coronalCross;
-uniform vec3 coronalNormal;
-uniform vec3 coronalPlaneCenter;
-
-uniform vec3 sagittalUp;
-uniform vec3 sagittalCross;
-uniform vec3 sagittalNormal;
-uniform vec3 sagittalPlaneCenter;
-
-//mpr thickness
-uniform float mprThickness;
-uniform vec3 mprScale;
-
 // GradientOpacity의 threshold 값
 uniform float GradientOpacityThreshold;
 
@@ -1945,70 +1926,6 @@ void applyBlend(vec3 posIS, vec3 endIS, vec3 tdims)
     //windowing 함수 적용 및 출력
     gl_FragData[0] = windowing(acc);
 
-    #endif
-    #if vtkBlendMode == 1003 || vtkBlendMode == 1004 || vtkBlendMode == 1005
-
-    vec3 rayStart = vec3(0.0);
-    vec3 tRay = vec3(0.0);
-    vec3 scale = 1.0 / mprScale;
-
-    #if vtkBlendMode == 1003
-    //rayStart = mprCrossPoint * vVCToIJK;
-    rayStart  = axialPlaneCenter;
-    rayStart += axialCross * (gl_FragCoord.x - 0.5 * canvasSize.x) * scale.x;
-    rayStart += axialUp    * (gl_FragCoord.y - 0.5 * canvasSize.y) * scale.x;
-    rayStart *= vVCToIJK;
-    tRay = axialNormal * vVCToIJK;
-    #elif vtkBlendMode == 1004
-    //rayStart = mprCrossPoint * vVCToIJK;
-    rayStart  = coronalPlaneCenter;
-    rayStart += coronalCross *(gl_FragCoord.x - 0.5 * canvasSize.x) * scale.y;
-    rayStart += coronalUp    * (gl_FragCoord.y - 0.5 * canvasSize.y) * scale.y;
-    rayStart *= vVCToIJK;
-    tRay = coronalNormal * vVCToIJK;
-    #elif vtkBlendMode == 1005
-    //rayStart = mprCrossPoint * vVCToIJK;
-    rayStart  = sagittalPlaneCenter;
-    rayStart += sagittalCross * (gl_FragCoord.x - 0.5 * canvasSize.x) * scale.z;
-    rayStart += sagittalUp    * (gl_FragCoord.y - 0.5 * canvasSize.y) * scale.z;
-    rayStart *= vVCToIJK;
-    tRay = sagittalNormal * vVCToIJK;
-    #endif
-
-    if(rayStart.x > 1.0 || rayStart.x < 0.0){
-      gl_FragData[0] = vec4(0);
-      return;
-    }
-
-    if(rayStart.y > 1.0 || rayStart.y < 0.0){
-      gl_FragData[0] = vec4(0);
-      return;
-    }
-
-    if(rayStart.z > 1.0 || rayStart.z < 0.0){
-      gl_FragData[0] = vec4(0);
-      return;
-    }
-
-    int thickness = max(2, int(mprThickness) + 1);
-
-    vec3 sampleStep = tRay * mprThickness / float(thickness);
-    vec3 start = rayStart + -tRay * mprThickness * 0.5;
-
-    float acc = 0.0;
-    //셈플링 진행
-    for (int i = 0; i < thickness + 1; ++i)
-    {
-      tValue = getTextureValue(start + float(i) * sampleStep);
-      acc += tValue.r;
-      //alpha 값도 적용
-    }
-
-    acc /=  float(thickness + 1);
-    //tValue = getTextureValue(rayStart);
-
-    //windowing 함수 적용 및 출력
-    gl_FragData[0] = windowing(acc);
     #endif
 }
 
