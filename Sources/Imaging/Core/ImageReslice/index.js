@@ -363,7 +363,8 @@ function vtkImageReslice(publicAPI, model) {
       borderMode === ImageBorderMode.CLAMP &&
       !(
         optimizedTransform != null ||
-        perspective ||
+        // FIXME: calculate mpr texture when !optimizeNearest
+        // perspective ||
         convertScalars != null ||
         rescaleScalars
       ) &&
