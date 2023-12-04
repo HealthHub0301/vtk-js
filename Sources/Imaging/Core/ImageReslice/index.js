@@ -314,7 +314,6 @@ function vtkImageReslice(publicAPI, model) {
     let outPtr = outScalars.getData();
     const outExt = output.getExtent();
     const newmat = indexMatrix;
-    model.mprtest = newmat;
     const outputStencil = null;
 
     //console.log("outext : " + outExt);
@@ -1104,7 +1103,6 @@ const DEFAULT_VALUES = {
   interpolator: vtkImageInterpolator.newInstance(),
   usePermuteExecute: false, // no supported yet
   inpoint: null,
-  mprtest : null,
   isMPRCustom: false,
 };
 
@@ -1136,7 +1134,6 @@ export function extend(publicAPI, model, initialValues = {}) {
     'slabNumberOfSlices',
     'slabSliceSpacingFraction',
     'inpoint',
-    'mprtest',
     'isMPRCustom',
   ]);
 
