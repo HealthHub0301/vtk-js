@@ -314,12 +314,9 @@ function vtkImageReslice(publicAPI, model) {
     let outPtr = outScalars.getData();
     const outExt = output.getExtent();
     const newmat = indexMatrix;
-    model.mprtest = newmat;
     const outputStencil = null;
 
     //console.log("outext : " + outExt);
-    model.mprCoordTexture = new Uint16Array((outExt[1]+1)*(outExt[3]+1)*3);
-    model.mprCoordTexture.fill(50000);
     // multiple samples for thick slabs
     const nsamples = Math.max(model.slabNumberOfSlices, 1);
 
@@ -363,8 +360,7 @@ function vtkImageReslice(publicAPI, model) {
       borderMode === ImageBorderMode.CLAMP &&
       !(
         optimizedTransform != null ||
-        // FIXME: calculate mpr texture when !optimizeNearest
-        // perspective ||
+        perspective ||
         convertScalars != null ||
         rescaleScalars
       ) &&
@@ -442,7 +438,6 @@ function vtkImageReslice(publicAPI, model) {
     iter.initialize(output, outExt, model.stencil, null);
     const outPtr0 = iter.getScalars(output, 0);
     let outPtrIndex = 0;
-    //let MPRcoordIndex = 0;
     let count = 0;
     const outTmp = macro.newTypedArray(
       scalarType,
@@ -454,7 +449,6 @@ function vtkImageReslice(publicAPI, model) {
 
     for (; !iter.isAtEnd(); iter.nextSpan()) {
       const span = iter.spanEndId() - iter.getId();
-      //MPRcoordIndex = iter.getId() * scalarSize * 3;
       outPtrIndex = iter.getId() * scalarSize * outComponents;
 
       //console.log(outPtrIndex, iter.getId(), scalarSize, outComponents);
@@ -486,6 +480,11 @@ function vtkImageReslice(publicAPI, model) {
           inPoint1[1] = inPoint0[1] + idY * yAxis[1];
           inPoint1[2] = inPoint0[2] + idY * yAxis[2];
           inPoint1[3] = inPoint0[3] + idY * yAxis[3];
+        }
+        model.inpoint = inPoint1;
+
+        if (model.isMPRCustom) {
+          return;
         }
 
         // march through one row of the output image
@@ -686,12 +685,6 @@ function vtkImageReslice(publicAPI, model) {
               // perform nearest-neighbor interpolation via pixel copy
               let offset = inIdX * inIncX + inIdY * inIncY + inIdZ * inIncZ;
 
-              model.mprCoordTexture[outPtrIndex * 3] = inIdX;
-              //MPRcoordIndex++;
-              model.mprCoordTexture[outPtrIndex * 3 + 1] = inIdY;
-              //MPRcoordIndex++;
-              model.mprCoordTexture[outPtrIndex * 3 + 2] = inIdZ;
-              //MPRcoordIndex++;
               // when memcpy is used with a constant size, the compiler will
               // optimize away the function call and use the minimum number
               // of instructions necessary to perform the copy
@@ -1109,8 +1102,8 @@ const DEFAULT_VALUES = {
   // resliceTransform: null,
   interpolator: vtkImageInterpolator.newInstance(),
   usePermuteExecute: false, // no supported yet
-  mprCoordTexture : null,
-  mprtest : null,
+  inpoint: null,
+  isMPRCustom: false,
 };
 
 // ----------------------------------------------------------------------------
@@ -1140,8 +1133,8 @@ export function extend(publicAPI, model, initialValues = {}) {
     'slabTrapezoidIntegration',
     'slabNumberOfSlices',
     'slabSliceSpacingFraction',
-    'mprCoordTexture',
-    'mprtest',
+    'inpoint',
+    'isMPRCustom',
   ]);
 
   macro.setGetArray(publicAPI, model, ['outputOrigin', 'outputSpacing'], 3);
