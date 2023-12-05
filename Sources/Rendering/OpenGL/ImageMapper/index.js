@@ -355,7 +355,7 @@ function vtkOpenGLImageMapper(publicAPI, model) {
             
                 if (cprWidth < canvasSize.x) {
                   if (st.x < sideX || st.x > 1.0 - sideX) {
-                    gl_FragData[0] = vec4(1.0, 0.0, 0.0, 1.0);
+                    gl_FragData[0] = vec4(0.0, 0.0, 0.0, 1.0);
                     return;
                   }
                   st.x = (st.x - sideX) * canvasSize.x / cprWidth;
@@ -365,7 +365,7 @@ function vtkOpenGLImageMapper(publicAPI, model) {
             
                 if (cprHeight < canvasSize.y) {
                   if (st.y < sideY || st.y > 1.0 - sideY) {
-                    gl_FragData[0] = vec4(1.0, 0.0, 0.0, 1.0);
+                    gl_FragData[0] = vec4(0.0, 0.0, 0.0, 1.0);
                     return;
                   }
                   st.y = (st.y - sideY) * canvasSize.y / cprHeight;

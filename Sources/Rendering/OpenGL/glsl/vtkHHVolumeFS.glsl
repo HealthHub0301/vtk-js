@@ -125,25 +125,8 @@ uniform sampler2D sctexture;
 uniform float cshift0;
 uniform float cscale0;
 
-// cpr thickness
-uniform sampler2D cvtexture;
-uniform sampler2D crtexture;
-uniform sampler2D citexture;
-uniform float cprThickness;
-uniform float ciwidth;
-uniform float ciheight;
-uniform float cprScale;
-uniform vec2 cprCenter;
-
 // GradientOpacity의 threshold 값
 uniform float GradientOpacityThreshold;
-
-// windowing 값
-uniform float windowCenter;
-uniform float windowWidth;
-
-// canvas 크기의 pixel size
-uniform vec2 canvasSize;
 
 // jitter texture
 uniform sampler2D jtexture;
@@ -205,7 +188,6 @@ uniform float cscale3;
 
 uniform float rescaleSlope;
 uniform float rescaleIntercept;
-uniform float pixelRange;
 
 uniform vec4 ipScalarRangeMin;
 uniform vec4 ipScalarRangeMax;
@@ -1460,14 +1442,6 @@ vec4 getSumColorForValue(vec4 tValue, vec4 tValue2, vec3 posIS, vec3 tstep)
 #endif
 return tColor;
 }
-vec4 windowing(float value) // value [-1, 1]
-{
-  vec4 pixelData = vec4(0.0, 0.0, 0.0, 0.0);
-  value = value * pixelRange / 2.0; // value [-r/2, r/2]
-  float scaledValue = (value - windowCenter) / windowWidth + 0.5;
-  float clampedValue = clamp(scaledValue, 0.0, 1.0);
-  return vec4(clampedValue, clampedValue, clampedValue, 1.0);
-}
 
 bool valueWithinScalarRange(vec4 val, vec4 min, vec4 max) {
   bool withinRange = false;
@@ -1832,99 +1806,6 @@ void applyBlend(vec3 posIS, vec3 endIS, vec3 tdims)
     }
 
     gl_FragData[0] = vec4(color.rgb/color.a, color.a);
-
-    #endif
-    #if vtkBlendMode == 1002
-
-    //gl_fragcoord 는 pixel 좌표입니다. 픽셀좌표를 해상도로 나누어서 0~1범위로 로 변경합니다.
-    vec2 st = gl_FragCoord.xy / canvasSize;
-
-    float cprWidth = ciwidth * cprScale;
-    float cprHeight = ciheight * cprScale;
-
-    //1pixel 당 1mm로 이미지 크기 고정
-    float sideX = (1.0 - cprWidth  / canvasSize.x) * 0.5;
-    float sideY = (1.0 - cprHeight / canvasSize.y) * 0.5;
-
-    st.x = st.x + cprCenter.x;
-    st.y = st.y + cprCenter.y;
-
-    if(ciwidth < canvasSize.x){
-
-      if(st.x < sideX){
-        gl_FragData[0] = vec4(0.0, 0.0, 0.0, 1.0);
-        return;
-      }
-      else if(st.x > 1.0 - sideX ){
-        gl_FragData[0] = vec4(0.0, 0.0, 0.0, 1.0);
-        return;
-      }
-
-      st.x = (st.x - sideX) * canvasSize.x / cprWidth;
-    }
-    else{
-      st.x = st.x * canvasSize.x / cprWidth + (1.0 - canvasSize.x / cprWidth) * 0.5;
-    }
-
-    if(cprHeight < canvasSize.y){
-
-      if(st.y < sideY){
-        gl_FragData[0] = vec4(0.0, 0.0, 0.0, 1.0);
-        return;
-      }
-      else if(st.y > 1.0 - sideY ){
-        gl_FragData[0] = vec4(0.0, 0.0, 0.0, 1.0);
-        return;
-      }
-
-      st.y = (st.y - sideY) * canvasSize.y / cprHeight;
-    }
-    else{
-      st.y = st.y * canvasSize.y / cprHeight + (1.0 - canvasSize.y / cprHeight) * 0.5;
-    }
-
-    //spline의 가속도와 cpr 진행 방향, image의 xyz volume 좌표를 얻어옵니다.
-    vec4 vel = texture2D(cvtexture, vec2(st.x, 0.5));
-    vec4 ray = texture2D(crtexture, vec2(st.x, 0.5));
-    vec4 img = texture2D(citexture, vec2(st.x, st.y));
-
-    //혹시 몰라 w값 처리
-    vel.w = 1.0;
-    ray.w = 1.0;
-
-    //spline의 가속도와 cpr 진행 방향을 cross 하여 thickness의 진행방향을 얻습니다.
-    vec3 tRay = cross(ray.xyz, vel.xyz);
-    tRay = normalize(tRay);
-
-    //volume 좌표를 shader에서 사용하는 좌표로 변경합니다.
-    //쉐이더는 volume좌표를 0~1범위로 변경해서 사용합니다.
-    img.xyz *= vVCToIJK;
-    tRay.xyz *= vVCToIJK;
-
-    //thickness 진행
-    float acc = 0.0;
-
-    //thickness는 정수로만 진행이 가능합니다.
-    //사실상 sampling 횟수를 지정하는 것과 같습니다.
-
-    int thickness = max(2, int(cprThickness) + 1);
-
-    vec3 sampleStep = tRay.xyz * cprThickness / float(thickness);
-    vec3 start = img.xyz + -tRay.xyz * cprThickness * 0.5;
-
-    //셈플링 진행,
-    for (int i = 0; i < thickness + 1; ++i)
-    {
-      tValue = getTextureValue(start + float(i) * sampleStep);
-      acc += tValue.r;
-      //alpha 값도 적용
-    }
-
-    //sampling 횟수만큼 나누어서 평균내기
-    acc /= float(thickness + 1);
-
-    //windowing 함수 적용 및 출력
-    gl_FragData[0] = windowing(acc);
 
     #endif
 }
