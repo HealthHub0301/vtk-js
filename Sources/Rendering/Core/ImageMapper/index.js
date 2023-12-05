@@ -290,9 +290,16 @@ const DEFAULT_VALUES = {
   sliceAtFocalPoint: false,
   preferSizeOverAccuracy: false, // Whether to use halfFloat representation of float, when it is inaccurate
   // <--MPR 관련 파라미터 추가-->
-  MprThickness: 1,
+  MprThickness: 10,
   MprSlicingMode: 2,
   MprMode: 0,
+  CprThicknessMode: false,
+  CprThickness: 10,
+  CprPoints: null,
+  CprImageWidth: 0,
+  CprPositionMap: null,
+  CprCenter: [0, 0],
+  CprScale: 1,
   originalData: null,
   slice: 0,
   // <--------------------->
@@ -321,6 +328,14 @@ export function extend(publicAPI, model, initialValues = {}) {
     'MprThickness',
     'MprSlicingMode',
     'MprMode',
+    // <--CPR 관련 파라미터 추가-->
+    'CprThicknessMode',
+    'CprThickness',
+    'CprPoints',
+    'CprImageWidth',
+    'CprPositionMap',
+    'CprCenter',
+    'CprScale',
     'originalData',
     'RescaleSlope',
     'RescaleIntercept',
