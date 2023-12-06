@@ -8,7 +8,6 @@ export const BlendMode = {
   // custom blend mode를 엄청나게 큰 수를 줘서 겹칠 일 없게
   INTERPOLATED_BLEND: 1000,
   GRADIENT_OPACITY_BLEND: 1001,
-  CPR_THICKNESS_BLEND: 1002,
 };
 
 export const FilterMode = {

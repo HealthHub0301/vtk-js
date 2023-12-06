@@ -102,10 +102,6 @@ function vtkVolumeMapper(publicAPI, model) {
     publicAPI.setBlendMode(BlendMode.GRADIENT_OPACITY_BLEND);
   };
 
-  publicAPI.setBLendModeToCPRThickness = () => {
-    publicAPI.setBlendMode(BlendMode.CPR_THICKNESS_BLEND);
-  };
-
   publicAPI.getBlendModeAsString = () =>
     macro.enumToString(BlendMode, model.blendMode);
 
@@ -167,17 +163,9 @@ const DEFAULT_VALUES = {
   ipScalarRange: [-1000000.0, 1000000.0],
   filterMode: FilterMode.OFF, // ignored by WebGL so no behavior change
   preferSizeOverAccuracy: false, // Whether to use halfFloat representation of float, when it is inaccurate
-  cprScale: 1.0,
-  cprCenter: [0.0, 0.0],
-  cprThickness: 10,
-  cprPoints: null,
-  cprPositionMap: null,
-  cprImageWidth: 0,
   pixelRange: 65536,
   rescaleSlope: 1,
   rescaleIntercept: 0,
-  windowWidth: 65535,
-  windowCenter: 32767.5,
   //<--영역 선택 기능이 작동 중인지 여부를 판별하는 파라미터 추가-->
   paintMode: false,
   //<--------------------->
@@ -210,17 +198,9 @@ export function extend(publicAPI, model, initialValues = {}) {
     'blendMode',
     'filterMode',
     'preferSizeOverAccuracy',
-    'cprScale',
-    'cprCenter',
-    'cprThickness',
-    'cprPoints',
-    'cprPositionMap',
-    'cprImageWidth',
     'pixelRange',
     'rescaleSlope',
     'rescaleIntercept',
-    'windowWidth',
-    'windowCenter',
     //<--영역 선택 기능이 작동 중인지 여부를 판별하는 파라미터 추가-->
     'paintMode',
     //<--------------------->

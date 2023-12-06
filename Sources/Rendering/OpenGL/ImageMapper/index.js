@@ -62,6 +62,12 @@ function vtkOpenGLImageMapper(publicAPI, model) {
       // <--볼륨 데이터, 픽셀의 좌표 데이터를 저장할 텍스처 세팅-->
       model.volumeTexture.setOpenGLRenderWindow(model._openGLRenderWindow);
       // <--------------------->
+
+      // CPR 관련 texture
+      model.cprVelocityTexture.setOpenGLRenderWindow(model._openGLRenderWindow);
+      model.cprRayTexture.setOpenGLRenderWindow(model._openGLRenderWindow);
+      model.cprImageTexture.setOpenGLRenderWindow(model._openGLRenderWindow);
+
       model.colorTexture.setOpenGLRenderWindow(model._openGLRenderWindow);
       model.pwfTexture.setOpenGLRenderWindow(model._openGLRenderWindow);
       const ren = model._openGLRenderer.getRenderable();
@@ -170,6 +176,16 @@ function vtkOpenGLImageMapper(publicAPI, model) {
       'uniform vec3 vVCToIJK;',
       'uniform float mprThickness;',
       // <--------------------->
+      'uniform sampler2D cvtexture;',
+      'uniform sampler2D crtexture;',
+      'uniform sampler2D citexture;',
+      'uniform vec2 canvasSize;',
+      'uniform float cprThickness;',
+      'uniform float ciwidth;',
+      'uniform float ciheight;',
+      'uniform float cprScale;',
+      'uniform vec2 cprCenter;',
+      'uniform vec3 vVCToIJKSpacing;',
       'uniform sampler2D colorTexture1;',
       'uniform sampler2D pwfTexture1;',
       'uniform float opacity;',
@@ -312,6 +328,75 @@ function vtkOpenGLImageMapper(publicAPI, model) {
                 ' count += 1.0;',
                 ' intensity += texture(texture2, mpr).r; }',
                 'float avg = intensity / count;',
+
+                'vec3 tcolor = texture2D(colorTexture1, vec2(avg * cscale0 + cshift0, 0.5)).rgb;',
+                'float scalarOpacity = texture2D(pwfTexture1, vec2(avg * pwfscale0 + pwfshift0, 0.5)).r;',
+                'gl_FragData[0] = vec4(tcolor, scalarOpacity * opacity);',
+              ]
+            ).result;
+          }
+          if (
+            model.renderable.getCprThicknessMode() &&
+            model.renderable.getCprPoints()?.length
+          ) {
+            FSSource = vtkShaderProgram.substitute(
+              FSSource,
+              '//VTK::TCoord::Impl',
+              [
+                `
+                vec2 st = tcoordVCVSOutput.xy;
+
+                float cprWidth = ciwidth * cprScale;
+                float cprHeight = ciheight * cprScale;
+            
+                //1pixel 당 1mm로 이미지 크기 고정
+                float sideX = (1.0 - cprWidth  / canvasSize.x) * 0.5;
+                float sideY = (1.0 - cprHeight / canvasSize.y) * 0.5;
+            
+                if (cprWidth < canvasSize.x) {
+                  if (st.x < sideX || st.x > 1.0 - sideX) {
+                    gl_FragData[0] = vec4(0.0, 0.0, 0.0, 1.0);
+                    return;
+                  }
+                  st.x = (st.x - sideX) * canvasSize.x / cprWidth;
+                } else {
+                  st.x = st.x * canvasSize.x / cprWidth + (1.0 - canvasSize.x / cprWidth) * 0.5;
+                }
+            
+                if (cprHeight < canvasSize.y) {
+                  if (st.y < sideY || st.y > 1.0 - sideY) {
+                    gl_FragData[0] = vec4(0.0, 0.0, 0.0, 1.0);
+                    return;
+                  }
+                  st.y = (st.y - sideY) * canvasSize.y / cprHeight;
+                } else {
+                  st.y = st.y * canvasSize.y / cprHeight + (1.0 - canvasSize.y / cprHeight) * 0.5;
+                }
+                `,
+                'vec4 vel = texture2D(cvtexture, vec2(st.x, 0.5));',
+                'vec4 ray = texture2D(crtexture, vec2(st.x, 0.5));',
+                'vec4 img = texture2D(citexture, vec2(st.x, st.y));',
+
+                // spline의 가속도와 cpr 진행 방향을 cross 하여 thickness의 진행방향을 얻습니다.
+                'vec3 tRay = cross(ray.xyz, vel.xyz);',
+                'tRay = normalize(tRay);',
+
+                // volume 좌표를 shader에서 사용하는 좌표로 변경합니다.
+                // 쉐이더는 volume좌표를 0~1범위로 변경해서 사용합니다.
+                'img.xyz *= vVCToIJKSpacing;',
+                'tRay.xyz *= vVCToIJKSpacing;',
+
+                // thickness 진행
+                'int thickness = max(2, int(cprThickness) + 1);',
+
+                'vec3 sampleStep = tRay.xyz * cprThickness / float(thickness);',
+                'vec3 start = img.xyz + -tRay.xyz * cprThickness * 0.5;',
+
+                'float intensity = 0.0;',
+                'for (int i = 0; i < thickness + 1; ++i) {',
+                '  intensity += texture(texture2, start + float(i) * sampleStep).r;',
+                '}',
+                'float avg = intensity / (float(thickness) + 1.0);',
 
                 'vec3 tcolor = texture2D(colorTexture1, vec2(avg * cscale0 + cshift0, 0.5)).rgb;',
                 'float scalarOpacity = texture2D(pwfTexture1, vec2(avg * pwfscale0 + pwfshift0, 0.5)).r;',
@@ -577,6 +662,29 @@ function vtkOpenGLImageMapper(publicAPI, model) {
     // volume 좌표를 shader에서 사용하는 좌표로 변경해야 합니다.
     // 쉐이더는 volume좌표를 0~1범위로 변경해서 사용합니다.
     // 해당 계산을 위해 필요한 값을 전송합니다.
+
+    const extSpacing = model.currentInput.getExtent();
+    const spc = model.currentInput.getSpacing();
+    const vsizeSpacing = new Float64Array(3);
+    vec3.set(
+      vsizeSpacing,
+      (extSpacing[1] - extSpacing[0]) * spc[0],
+      (extSpacing[3] - extSpacing[2]) * spc[1],
+      (extSpacing[5] - extSpacing[4]) * spc[2]
+    );
+    const vctoijkSpacing = new Float64Array(3);
+
+    vec3.set(vctoijkSpacing, 1.0, 1.0, 1.0);
+    vec3.divide(vctoijkSpacing, vctoijkSpacing, vsizeSpacing);
+    cellBO
+      .getProgram()
+      .setUniform3f(
+        'vVCToIJKSpacing',
+        vctoijkSpacing[0],
+        vctoijkSpacing[1],
+        vctoijkSpacing[2]
+      );
+
     const ext = [
       model.renderable.getXdimSize(),
       model.renderable.getYdimSize(),
@@ -622,6 +730,37 @@ function vtkOpenGLImageMapper(publicAPI, model) {
       }
     }
     // <--------------------->
+    if (
+      model.renderable.getCprThicknessMode() &&
+      model.renderable.getCprPoints()?.length
+    ) {
+      const canvasSize = model._openGLRenderWindow.getSize();
+      cellBO
+        .getProgram()
+        .setUniform2f('canvasSize', canvasSize[0], canvasSize[1]);
+      cellBO
+        .getProgram()
+        .setUniformf('cprScale', model.renderable.getCprScale());
+      const cprCenter = model.renderable.getCprCenter();
+      cellBO.getProgram().setUniform2f('cprCenter', cprCenter[0], cprCenter[1]);
+      const cprPoints = model.renderable.getCprPoints();
+      const cprThickness = model.renderable.getCprThickness();
+      const cprImageWidth = model.renderable.getCprImageWidth();
+
+      cellBO.getProgram().setUniformf('ciwidth', cprPoints.length);
+      cellBO.getProgram().setUniformf('ciheight', cprImageWidth);
+      cellBO.getProgram().setUniformf('cprThickness', cprThickness);
+    }
+
+    cellBO
+      .getProgram()
+      .setUniformi('cvtexture', model.cprVelocityTexture.getTextureUnit());
+    cellBO
+      .getProgram()
+      .setUniformi('crtexture', model.cprRayTexture.getTextureUnit());
+    cellBO
+      .getProgram()
+      .setUniformi('citexture', model.cprImageTexture.getTextureUnit());
 
     const numComp = model.openGLTexture.getComponents();
     const iComps = actor.getProperty().getIndependentComponents();
@@ -798,6 +937,12 @@ function vtkOpenGLImageMapper(publicAPI, model) {
     // <--볼륨 데이터, 픽셀의 좌표 데이터를 저장할 텍스처 세팅-->
     model.volumeTexture.activate();
     // <--------------------->
+
+    // CPR 관련 texture
+    model.cprVelocityTexture.activate();
+    model.cprRayTexture.activate();
+    model.cprImageTexture.activate();
+
     model.colorTexture.activate();
     model.pwfTexture.activate();
 
@@ -813,6 +958,11 @@ function vtkOpenGLImageMapper(publicAPI, model) {
     // <--볼륨 데이터, 픽셀의 좌표 데이터를 저장할 텍스처 세팅-->
     model.volumeTexture.deactivate();
     // <--------------------->
+
+    model.cprVelocityTexture.deactivate();
+    model.cprRayTexture.deactivate();
+    model.cprImageTexture.deactivate();
+
     model.colorTexture.deactivate();
     model.pwfTexture.deactivate();
   };
@@ -892,6 +1042,79 @@ function vtkOpenGLImageMapper(publicAPI, model) {
 
     model.volumeTexture.setMinificationFilter(Filter.LINEAR);
     model.volumeTexture.setMagnificationFilter(Filter.LINEAR);
+
+    const cprPoints = model.renderable.getCprPoints();
+    const cprPositionMap = model.renderable.getCprPositionMap();
+    const cprImageWidth = model.renderable.getCprImageWidth();
+    const width = cprPoints?.length ?? 1;
+    const isCprThickness =
+      model.renderable.getCprThicknessMode() && width && cprPositionMap;
+
+    const cvTable = new Float32Array(width * 3);
+    const crTable = new Float32Array(width * 3);
+    let ciTable = new Float32Array(width * 3);
+
+    if (isCprThickness) {
+      let idx = 0;
+      for (let i = 0; i < width; ++i) {
+        cvTable[idx + 0] = cprPoints[i].velocity[0];
+        cvTable[idx + 1] = cprPoints[i].velocity[1];
+        cvTable[idx + 2] = cprPoints[i].velocity[2];
+
+        crTable[idx + 0] = cprPoints[i].rayDir[0];
+        crTable[idx + 1] = cprPoints[i].rayDir[1];
+        crTable[idx + 2] = cprPoints[i].rayDir[2];
+        idx += 3;
+      }
+      ciTable = cprPositionMap;
+    }
+
+    model.cprVelocityTexture.releaseGraphicsResources(
+      model._openGLRenderWindow
+    );
+    model.cprVelocityTexture.setMinificationFilter(Filter.LINEAR);
+    model.cprVelocityTexture.setMagnificationFilter(Filter.LINEAR);
+
+    model.cprRayTexture.releaseGraphicsResources(model._openGLRenderWindow);
+    model.cprRayTexture.setMinificationFilter(Filter.LINEAR);
+    model.cprRayTexture.setMagnificationFilter(Filter.LINEAR);
+
+    model.cprImageTexture.releaseGraphicsResources(model._openGLRenderWindow);
+    model.cprImageTexture.setMinificationFilter(Filter.LINEAR);
+    model.cprImageTexture.setMagnificationFilter(Filter.LINEAR);
+    model.cprVelocityTexture.create2DFromRaw(
+      width,
+      1,
+      3,
+      VtkDataTypes.FLOAT,
+      cvTable
+    );
+    model.cprRayTexture.create2DFromRaw(
+      width,
+      1,
+      3,
+      VtkDataTypes.FLOAT,
+      crTable
+    );
+
+    if (isCprThickness) {
+      model.cprImageTexture.create2DFromRaw(
+        width,
+        cprImageWidth,
+        3,
+        VtkDataTypes.FLOAT,
+        ciTable
+      );
+    } else {
+      model.cprImageTexture.create2DFromRaw(
+        width,
+        1,
+        3,
+        VtkDataTypes.FLOAT,
+        ciTable
+      );
+    }
+
     // <--------------------->
     const iComps = actorProperty.getIndependentComponents();
     const numIComps = iComps ? numComp : 1;
@@ -1120,7 +1343,11 @@ function vtkOpenGLImageMapper(publicAPI, model) {
         model.renderable.getZdimSize(),
       ];
 
-      if (model.renderable.getMprMode() && volScalars) {
+      if (
+        (model.renderable.getMprMode() ||
+          model.renderable.getCprThicknessMode()) &&
+        volScalars
+      ) {
         // <--텍스처에 저장할 볼륨 데이터-->
         // <--------------------->
         // rebuild the scalarTexture if the data has changed
@@ -1377,6 +1604,9 @@ const DEFAULT_VALUES = {
   // <--볼륨 데이터, 픽셀의 좌표 데이터를 저장할 텍스처 추가-->
   volumeTexture: null,
   volumeTextureString: null,
+  cprVelocityTexture: null,
+  cprRayTexture: null,
+  cprImageTexture: null,
   // <--------------------->
   tris: null,
   imagemat: null,
@@ -1412,6 +1642,9 @@ export function extend(publicAPI, model, initialValues = {}) {
   // <--볼륨 데이터, 픽셀의 좌표 데이터를 저장할 텍스처 세팅-->
   model.volumeTexture = vtkOpenGLTexture.newInstance();
   // <--------------------->
+  model.cprVelocityTexture = vtkOpenGLTexture.newInstance();
+  model.cprRayTexture = vtkOpenGLTexture.newInstance();
+  model.cprImageTexture = vtkOpenGLTexture.newInstance();
   model.colorTexture = vtkOpenGLTexture.newInstance();
   model.pwfTexture = vtkOpenGLTexture.newInstance();
 
