@@ -1,18 +1,14 @@
 //VTK::System::Dec
 
 /*=========================================================================
-
   Program:   Visualization Toolkit
   Module:    vtkVolumeFS.glsl
-
   Copyright (c) Ken Martin, Will Schroeder, Bill Lorensen
   All rights reserved.
   See Copyright.txt or http://www.kitware.com/Copyright.htm for details.
-
      This software is distributed WITHOUT ANY WARRANTY; without even
      the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
      PURPOSE.  See the above copyright notice for more information.
-
 =========================================================================*/
 // Template for the volume mappers fragment shader
 
@@ -62,15 +58,6 @@ uniform float vDiffuse;
 uniform float vSpecular;
 //VTK::Light::Dec
 #endif
-
-//VTK::VolumeShadowOn
-//VTK::SurfaceShadowOn
-//VTK::localAmbientOcclusionOn
-//VTK::LAO::Dec
-//VTK::VolumeShadow::Dec
-
-// define vtkComputeNormalFromOpacity
-//VTK::vtkComputeNormalFromOpacity
 
 // possibly define vtkGradientOpacityOn
 //VTK::GradientOpacityOn
@@ -130,11 +117,16 @@ uniform float vPlaneDistance5;
 
 // opacity and color textures
 uniform sampler2D otexture;
+uniform sampler2D sotexture;
 uniform float oshift0;
 uniform float oscale0;
 uniform sampler2D ctexture;
+uniform sampler2D sctexture;
 uniform float cshift0;
 uniform float cscale0;
+
+// GradientOpacity의 threshold 값
+uniform float GradientOpacityThreshold;
 
 // jitter texture
 uniform sampler2D jtexture;
@@ -194,6 +186,9 @@ uniform float cshift3;
 uniform float cscale3;
 #endif
 
+uniform float rescaleSlope;
+uniform float rescaleIntercept;
+
 uniform vec4 ipScalarRangeMin;
 uniform vec4 ipScalarRangeMax;
 
@@ -211,7 +206,6 @@ float sampleDistanceIS;
 #define EPSILON  0.001
 #define PI       3.1415
 #define PI2      9.8696
-
 //=======================================================================
 // Webgl2 specific version of functions
 #if __VERSION__ == 300
@@ -220,7 +214,7 @@ uniform highp sampler3D texture1;
 
 vec4 getTextureValue(vec3 pos)
 {
-  vec4 tmp = texture(texture1, pos);
+  vec4 tmp = texture(texture1, pos) * rescaleSlope + rescaleIntercept;
 #if vtkNumComponents == 1
   tmp.a = tmp.r;
 #endif
@@ -352,9 +346,307 @@ vec3 rotateToIDX(vec3 dirVC){
 #endif
 
 //=======================================================================
+// compute the normals and gradient magnitudes for a position
+// for independent components
+mat4 computeMat4Normal(vec3 pos, vec4 tValue, vec3 tstep)
+{
+  mat4 result;
+  vec4 distX = getTextureValue(pos + vec3(tstep.x, 0.0, 0.0)) - tValue;
+  vec4 distY = getTextureValue(pos + vec3(0.0, tstep.y, 0.0)) - tValue;
+  vec4 distZ = getTextureValue(pos + vec3(0.0, 0.0, tstep.z)) - tValue;
+
+  // divide by spacing
+  distX /= vSpacing.x;
+  distY /= vSpacing.y;
+  distZ /= vSpacing.z;
+
+  mat3 rot;
+  rot[0] = vPlaneNormal0;
+  rot[1] = vPlaneNormal2;
+  rot[2] = vPlaneNormal4;
+
+#if !defined(vtkComponent0Proportional)
+  result[0].xyz = vec3(distX.r, distY.r, distZ.r);
+  result[0].a = length(result[0].xyz);
+  result[0].xyz *= rot;
+  if (result[0].w > 0.0)
+  {
+    result[0].xyz /= result[0].w;
+  }
+#endif
+
+// optionally compute the 2nd component
+#if vtkNumComponents >= 2 && !defined(vtkComponent1Proportional)
+  result[1].xyz = vec3(distX.g, distY.g, distZ.g);
+  result[1].a = length(result[1].xyz);
+  result[1].xyz *= rot;
+  if (result[1].w > 0.0)
+  {
+    result[1].xyz /= result[1].w;
+  }
+#endif
+
+// optionally compute the 3rd component
+#if vtkNumComponents >= 3 && !defined(vtkComponent2Proportional)
+  result[2].xyz = vec3(distX.b, distY.b, distZ.b);
+  result[2].a = length(result[2].xyz);
+  result[2].xyz *= rot;
+  if (result[2].w > 0.0)
+  {
+    result[2].xyz /= result[2].w;
+  }
+#endif
+
+// optionally compute the 4th component
+#if vtkNumComponents >= 4 && !defined(vtkComponent3Proportional)
+  result[3].xyz = vec3(distX.a, distY.a, distZ.a);
+  result[3].a = length(result[3].xyz);
+  result[3].xyz *= rot;
+  if (result[3].w > 0.0)
+  {
+    result[3].xyz /= result[3].w;
+  }
+#endif
+
+  return result;
+}
+
+//=======================================================================
+// global shadow - secondary ray
+#if defined(VolumeShadowOn) || defined(localAmbientOcclusionOn)
+float random()
+{
+  float rand = fract(sin(dot(gl_FragCoord.xy,vec2(12.9898,78.233)))*43758.5453123);
+  float jitter=texture2D(jtexture,gl_FragCoord.xy/32.).r;
+  uint pcg_state = floatBitsToUint(jitter);
+  uint state = pcg_state;
+  pcg_state = pcg_state * uint(747796405) + uint(2891336453);
+  uint word = ((state >> ((state >> uint(28)) + uint(4))) ^ state) * uint(277803737);
+  return (float((((word >> uint(22)) ^ word) >> 1 ))/float(2147483647) + rand)/2.0;
+}
+#endif
+
+#ifdef VolumeShadowOn
+  float phase_function(float cos_angle)
+  {
+    // divide by 2.0 instead of 4pi to increase intensity
+    return ((1.0-anisotropy2)/pow(1.0+anisotropy2-2.0*anisotropy*cos_angle, 1.5))/2.0;
+  }
+
+  // Computes the intersection between a ray and a box
+  struct Hit
+  {
+    float tmin;
+    float tmax;
+  };
+
+  struct Ray
+  {
+    vec3 origin;
+    vec3 dir;
+    vec3 invDir;
+  };
+
+  bool BBoxIntersect(vec3 boundMin, vec3 boundMax, const Ray r, out Hit hit)
+  {
+    vec3 tbot = r.invDir * (boundMin - r.origin);
+    vec3 ttop = r.invDir * (boundMax - r.origin);
+    vec3 tmin = min(ttop, tbot);
+    vec3 tmax = max(ttop, tbot);
+    vec2 t = max(tmin.xx, tmin.yz);
+    float t0 = max(t.x, t.y);
+    t = min(tmax.xx, tmax.yz);
+    float t1 = min(t.x, t.y);
+    hit.tmin = t0;
+    hit.tmax = t1;
+    return t1 > max(t0,0.0);
+  }
+
+  // As BBoxIntersect requires the inverse of the ray coords,
+  // this function is used to avoid numerical issues
+  void safe_0_vector(inout Ray ray)
+  {
+    if(abs(ray.dir.x) < EPSILON) ray.dir.x = sign(ray.dir.x) * EPSILON;
+    if(abs(ray.dir.y) < EPSILON) ray.dir.y = sign(ray.dir.y) * EPSILON;
+    if(abs(ray.dir.z) < EPSILON) ray.dir.z = sign(ray.dir.z) * EPSILON;
+  }
+
+  float volume_shadow(vec3 posIS, vec3 lightDirNormIS)
+  {
+    float shadow = 1.0;
+    float opacity = 0.0;
+
+    // modify sample distance with a random number between 1.5 and 3.0
+    float sampleDistanceISVS_jitter = sampleDistanceISVS * mix(1.5, 3.0, random());
+    float opacityPrev = texture2D(otexture, vec2(getTextureValue(posIS).r * oscale0 + oshift0, 0.5)).r;
+
+    // in case the first sample near surface has a very tiled light ray, we need to offset start position
+    posIS += sampleDistanceISVS_jitter * lightDirNormIS;
+
+    // compute the start and end points for the ray
+    Ray ray;
+    Hit hit;
+    ray.origin = posIS;
+    ray.dir = lightDirNormIS;
+    safe_0_vector(ray);
+    ray.invDir = 1.0/ray.dir;
+
+    if(!BBoxIntersect(vec3(0.0),vec3(1.0), ray, hit))
+    {
+      return 1.0;
+    }
+    float maxdist = hit.tmax;
+
+    // interpolate shadow ray length between: 1 unit of sample distance in IS to SQRT3, based on globalIlluminationReach
+    float maxgi = mix(sampleDistanceISVS_jitter,SQRT3,giReach);
+    maxdist = min(maxdist,maxgi);
+    if(maxdist < EPSILON) {
+      return 1.0;
+    }
+
+    // support gradient opacity
+    #ifdef vtkGradientOpacityOn
+      vec4 normal;
+    #endif
+
+    float current_dist = 0.0;
+    float current_step = length(sampleDistanceISVS_jitter * lightDirNormIS);
+    float clamped_step = 0.0;
+
+    vec4 scalar = vec4(0.0);
+    while(current_dist < maxdist)
+    {
+  #ifdef vtkClippingPlanesOn
+      vec3 posVC = IStoVC(posIS);
+      for (int i = 0; i < clip_numPlanes; ++i)
+      {
+        if (dot(vec3(vClipPlaneOrigins[i] - posVC), vClipPlaneNormals[i]) > 0.0)
+        {
+          current_dist = maxdist;
+        }
+      }
+  #endif
+      scalar = getTextureValue(posIS);
+      opacity = texture2D(otexture, vec2(scalar.r * oscale0 + oshift0, 0.5)).r;
+      #ifdef vtkGradientOpacityOn
+        normal = computeNormal(posIS, vec3(1.0/vec3(volumeDimensions)));
+        opacity *= computeGradientOpacityFactor(normal.w, goscale0, goshift0, gomin0, gomax0);
+      #endif
+      shadow *= 1.0 - opacity;
+
+      // optimization: early termination
+      if (shadow < EPSILON){
+        return 0.0;
+      }
+
+      clamped_step = min(maxdist - current_dist, current_step);
+      posIS += clamped_step * lightDirNormIS;
+      current_dist += current_step;
+    }
+
+    return shadow;
+  }
+
+  vec3 applyShadowRay(vec3 tColor, vec3 posIS, vec3 viewDirectionVC)
+  {
+    vec3 vertLight = vec3(0.0);
+    vec3 secondary_contrib = vec3(0.0);
+    // here we assume only positional light, no effect of cones
+    for (int i = 0; i < lightNum; i++)
+    {
+      #if(vtkLightComplexity==3)
+        if (lightPositional[i] == 1){
+          vertLight = lightPositionVC[i] - IStoVC(posIS);
+        }else{
+          vertLight = - lightDirectionVC[i];
+        }
+      #else
+        vertLight = - lightDirectionVC[i];
+      #endif
+      // here we assume achromatic light, only intensity
+      float dDotL = dot(viewDirectionVC, normalize(vertLight));
+      // isotropic scatter returns 0.5 instead of 1/4pi to increase intensity
+      float phase_attenuation = 0.5;
+      if (abs(anisotropy) > EPSILON){
+        phase_attenuation = phase_function(dDotL);
+      }
+      float vol_shadow = volume_shadow(posIS, normalize(rotateToIDX(vertLight)));
+      secondary_contrib += tColor * vDiffuse * lightColor[i] * vol_shadow * phase_attenuation;
+      secondary_contrib += tColor * vAmbient;
+    }
+    return secondary_contrib;
+  }
+#endif
+
+//=======================================================================
+// local ambient occlusion
+#ifdef localAmbientOcclusionOn
+vec3 sample_direction_uniform(int i)
+{
+  float rand = random() * 0.5;
+  float theta = PI2 * (kernelSample[i][0] + rand);
+  float phi = acos(2.0 * (kernelSample[i][1] + rand) -1.0) / 2.5;
+  return normalize(vec3(cos(theta)*sin(phi), sin(theta)*sin(phi), cos(phi)));
+}
+
+// return a matrix that transform startDir into z axis; startDir should be normalized
+mat3 zBaseRotationalMatrix(vec3 startDir){
+  vec3 axis = cross(startDir, vec3(0.0,0.0,1.0));
+  float cosA = startDir.z;
+  float k = 1.0 / (1.0 + cosA);
+  mat3 matrix = mat3((axis.x * axis.x * k) + cosA, (axis.y * axis.x * k) - axis.z, (axis.z * axis.x * k) + axis.y,
+              (axis.x * axis.y * k) + axis.z, (axis.y * axis.y * k) + cosA, (axis.z * axis.y * k) - axis.x,
+              (axis.x * axis.z * k) - axis.y, (axis.y * axis.z * k) + axis.x, (axis.z * axis.z * k) + cosA);
+  return matrix;
+}
+
+float computeLAO(vec3 posIS, float op, vec3 lightDir, vec4 normal){
+  // apply LAO only at selected locations, otherwise return full brightness
+  if (normal.w > 0.0 && op > 0.05){
+    float total_transmittance = 0.0;
+    mat3 inverseRotateBasis = inverse(zBaseRotationalMatrix(normalize(-normal.xyz)));
+    vec3 currPos, randomDirStep;
+    float weight, transmittance, opacity;
+    for (int i = 0; i < kernelSize; i++)
+    {
+      randomDirStep = inverseRotateBasis * sample_direction_uniform(i) * sampleDistanceIS;
+      weight = 1.0 - dot(normalize(lightDir), normalize(randomDirStep));
+      currPos = posIS;
+      transmittance = 1.0;
+      for (int j = 0; j < kernelRadius ; j++){
+        currPos += randomDirStep;
+        // check if it's at clipping plane, if so return full brightness
+        if (all(greaterThan(currPos, vec3(EPSILON))) && all(lessThan(currPos,vec3(1.0-EPSILON)))){
+          opacity = texture2D(otexture, vec2(getTextureValue(currPos).r * oscale0 + oshift0, 0.5)).r;
+          #ifdef vtkGradientOpacityOn
+             opacity *= computeGradientOpacityFactor(normal.w, goscale0, goshift0, gomin0, gomax0);
+          #endif
+          transmittance *= 1.0 - opacity;
+        }
+        else{
+          break;
+        }
+      }
+      total_transmittance += transmittance / float(kernelRadius) * weight;
+
+      // early termination if fully translucent
+      if (total_transmittance > 1.0 - EPSILON){
+        return 1.0;
+      }
+    }
+    // average transmittance and reduce variance
+    return clamp(total_transmittance / float(kernelSize), 0.3, 1.0);
+  } else {
+    return 1.0;
+  }
+}
+#endif
+
+//=======================================================================
 // Given a normal compute the gradient opacity factors
+//
 float computeGradientOpacityFactor(
-  float normalMag, float goscale, float goshift, float gomin, float gomax)
+  vec4 normalMag, float goscale, float goshift, float gomin, float gomax)
 {
 #if defined(vtkGradientOpacityOn)
   return clamp(normalMag * goscale + goshift, gomin, gomax);
@@ -365,28 +657,28 @@ float computeGradientOpacityFactor(
 
 //=======================================================================
 // compute the normal and gradient magnitude for a position, uses forward difference
-#if (vtkLightComplexity > 0) || (defined vtkGradientOpacityOn)
-#ifdef vtkClippingPlanesOn
-  void adjustClippedVoxelValues(vec3 pos, vec3 texPos[3], inout vec3 g1)
-  {
-    vec3 g1VC[3];
-    for (int i = 0; i < 3; ++i)
+#if vtkLightComplexity > 0 || (defined vtkGradientOpacityOn)
+  #ifdef vtkClippingPlanesOn
+    void adjustClippedVoxelValues(vec3 pos, vec3 texPos[3], inout vec3 g1)
     {
-      g1VC[i] = IStoVC(texPos[i]);
-    }
-    vec3 posVC = IStoVC(pos);
-    for (int i = 0; i < clip_numPlanes; ++i)
-    {
-      for (int j = 0; j < 3; ++j)
+      vec3 g1VC[3];
+      for (int i = 0; i < 3; ++i)
       {
-        if(dot(vec3(vClipPlaneOrigins[i] - g1VC[j].xyz), vClipPlaneNormals[i]) > 0.0)
+        g1VC[i] = IStoVC(texPos[i]);
+      }
+      vec3 posVC = IStoVC(pos);
+      for (int i = 0; i < clip_numPlanes; ++i)
+      {
+        for (int j = 0; j < 3; ++j)
         {
-          g1[j] = 0.0;
+          if(dot(vec3(vClipPlaneOrigins[i] - g1VC[j].xyz), vClipPlaneNormals[i]) > 0.0)
+          {
+            g1[j] = 0.0;
+          }
         }
       }
     }
-  }
-#endif
+  #endif
 
   #ifdef vtkComputeNormalFromOpacity
     #ifdef vtkGradientOpacityOn
@@ -521,306 +813,7 @@ vec3 fragCoordToIndexSpace(vec4 fragCoord) {
 
   vec3 index = (vWCtoIDX * vertex).xyz;
 
-  // half voxel fix for labelmapOutline
   return (index + vec3(0.5)) / vec3(volumeDimensions);
-}
-#endif
-
-//=======================================================================
-// compute the normals and gradient magnitudes for a position
-// for independent components
-mat4 computeMat4Normal(vec3 pos, vec4 tValue, vec3 tstep)
-{
-  mat4 result;
-  vec4 distX = getTextureValue(pos + vec3(tstep.x, 0.0, 0.0)) - tValue;
-  vec4 distY = getTextureValue(pos + vec3(0.0, tstep.y, 0.0)) - tValue;
-  vec4 distZ = getTextureValue(pos + vec3(0.0, 0.0, tstep.z)) - tValue;
-
-  // divide by spacing
-  distX /= vSpacing.x;
-  distY /= vSpacing.y;
-  distZ /= vSpacing.z;
-
-  mat3 rot;
-  rot[0] = vPlaneNormal0;
-  rot[1] = vPlaneNormal2;
-  rot[2] = vPlaneNormal4;
-
-#if !defined(vtkComponent0Proportional)
-  result[0].xyz = vec3(distX.r, distY.r, distZ.r);
-  result[0].a = length(result[0].xyz);
-  result[0].xyz *= rot;
-  if (result[0].w > 0.0)
-  {
-    result[0].xyz /= result[0].w;
-  }
-#endif
-
-// optionally compute the 2nd component
-#if vtkNumComponents >= 2 && !defined(vtkComponent1Proportional)
-  result[1].xyz = vec3(distX.g, distY.g, distZ.g);
-  result[1].a = length(result[1].xyz);
-  result[1].xyz *= rot;
-  if (result[1].w > 0.0)
-  {
-    result[1].xyz /= result[1].w;
-  }
-#endif
-
-// optionally compute the 3rd component
-#if vtkNumComponents >= 3 && !defined(vtkComponent2Proportional)
-  result[2].xyz = vec3(distX.b, distY.b, distZ.b);
-  result[2].a = length(result[2].xyz);
-  result[2].xyz *= rot;
-  if (result[2].w > 0.0)
-  {
-    result[2].xyz /= result[2].w;
-  }
-#endif
-
-// optionally compute the 4th component
-#if vtkNumComponents >= 4 && !defined(vtkComponent3Proportional)
-  result[3].xyz = vec3(distX.a, distY.a, distZ.a);
-  result[3].a = length(result[3].xyz);
-  result[3].xyz *= rot;
-  if (result[3].w > 0.0)
-  {
-    result[3].xyz /= result[3].w;
-  }
-#endif
-
-  return result;
-}
-
-//=======================================================================
-// global shadow - secondary ray
-#if defined(VolumeShadowOn) || defined(localAmbientOcclusionOn)
-float random()
-{
-  float rand = fract(sin(dot(gl_FragCoord.xy,vec2(12.9898,78.233)))*43758.5453123);
-  float jitter=texture2D(jtexture,gl_FragCoord.xy/32.).r;
-  uint pcg_state = floatBitsToUint(jitter);
-  uint state = pcg_state;
-  pcg_state = pcg_state * uint(747796405) + uint(2891336453);
-  uint word = ((state >> ((state >> uint(28)) + uint(4))) ^ state) * uint(277803737);
-  return (float((((word >> uint(22)) ^ word) >> 1 ))/float(2147483647) + rand)/2.0;
-}
-#endif
-
-#ifdef VolumeShadowOn
-// henyey greenstein phase function
-float phase_function(float cos_angle)
-{
-  // divide by 2.0 instead of 4pi to increase intensity
-  return ((1.0-anisotropy2)/pow(1.0+anisotropy2-2.0*anisotropy*cos_angle, 1.5))/2.0;
-}
-
-// Computes the intersection between a ray and a box
-struct Hit
-{
-  float tmin;
-  float tmax;
-};
-
-struct Ray
-{
-  vec3 origin;
-  vec3 dir;
-  vec3 invDir;
-};
-
-bool BBoxIntersect(vec3 boundMin, vec3 boundMax, const Ray r, out Hit hit)
-{
-  vec3 tbot = r.invDir * (boundMin - r.origin);
-  vec3 ttop = r.invDir * (boundMax - r.origin);
-  vec3 tmin = min(ttop, tbot);
-  vec3 tmax = max(ttop, tbot);
-  vec2 t = max(tmin.xx, tmin.yz);
-  float t0 = max(t.x, t.y);
-  t = min(tmax.xx, tmax.yz);
-  float t1 = min(t.x, t.y);
-  hit.tmin = t0;
-  hit.tmax = t1;
-  return t1 > max(t0,0.0);
-}
-
-// As BBoxIntersect requires the inverse of the ray coords,
-// this function is used to avoid numerical issues
-void safe_0_vector(inout Ray ray)
-{
-  if(abs(ray.dir.x) < EPSILON) ray.dir.x = sign(ray.dir.x) * EPSILON;
-  if(abs(ray.dir.y) < EPSILON) ray.dir.y = sign(ray.dir.y) * EPSILON;
-  if(abs(ray.dir.z) < EPSILON) ray.dir.z = sign(ray.dir.z) * EPSILON;
-}
-
-float volume_shadow(vec3 posIS, vec3 lightDirNormIS)
-{
-  float shadow = 1.0;
-  float opacity = 0.0;
-
-  // modify sample distance with a random number between 1.5 and 3.0
-  float sampleDistanceISVS_jitter = sampleDistanceISVS * mix(1.5, 3.0, random());
-  float opacityPrev = texture2D(otexture, vec2(getTextureValue(posIS).r * oscale0 + oshift0, 0.5)).r;
-
-  // in case the first sample near surface has a very tiled light ray, we need to offset start position
-  posIS += sampleDistanceISVS_jitter * lightDirNormIS;
-
-  // compute the start and end points for the ray
-  Ray ray;
-  Hit hit;
-  ray.origin = posIS;
-  ray.dir = lightDirNormIS;
-  safe_0_vector(ray);
-  ray.invDir = 1.0/ray.dir;
-
-  if(!BBoxIntersect(vec3(0.0),vec3(1.0), ray, hit))
-  {
-    return 1.0;
-  }
-  float maxdist = hit.tmax;
-
-  // interpolate shadow ray length between: 1 unit of sample distance in IS to SQRT3, based on globalIlluminationReach
-  float maxgi = mix(sampleDistanceISVS_jitter,SQRT3,giReach);
-  maxdist = min(maxdist,maxgi);
-  if(maxdist < EPSILON) {
-    return 1.0;
-  }
-
-  // support gradient opacity
-  #ifdef vtkGradientOpacityOn
-    vec4 normal;
-  #endif
-
-  float current_dist = 0.0;
-  float current_step = length(sampleDistanceISVS_jitter * lightDirNormIS);
-  float clamped_step = 0.0;
-
-  vec4 scalar = vec4(0.0);
-  while(current_dist < maxdist)
-  {
-#ifdef vtkClippingPlanesOn
-    vec3 posVC = IStoVC(posIS);
-    for (int i = 0; i < clip_numPlanes; ++i)
-    {
-      if (dot(vec3(vClipPlaneOrigins[i] - posVC), vClipPlaneNormals[i]) > 0.0)
-      {
-        current_dist = maxdist;
-      }
-    }
-#endif
-    scalar = getTextureValue(posIS);
-    opacity = texture2D(otexture, vec2(scalar.r * oscale0 + oshift0, 0.5)).r;
-    #ifdef vtkGradientOpacityOn
-      normal = computeNormal(posIS, vec3(1.0/vec3(volumeDimensions)));
-      opacity *= computeGradientOpacityFactor(normal.w, goscale0, goshift0, gomin0, gomax0);
-    #endif
-    shadow *= 1.0 - opacity;
-
-    // optimization: early termination
-    if (shadow < EPSILON){
-      return 0.0;
-    }
-
-    clamped_step = min(maxdist - current_dist, current_step);
-    posIS += clamped_step * lightDirNormIS;
-    current_dist += current_step;
-  }
-
-  return shadow;
-}
-
-vec3 applyShadowRay(vec3 tColor, vec3 posIS, vec3 viewDirectionVC)
-{
-  vec3 vertLight = vec3(0.0);
-  vec3 secondary_contrib = vec3(0.0);
-  // here we assume only positional light, no effect of cones
-  for (int i = 0; i < lightNum; i++)
-  {
-    #if(vtkLightComplexity==3)
-      if (lightPositional[i] == 1){
-        vertLight = lightPositionVC[i] - IStoVC(posIS);
-      }else{
-        vertLight = - lightDirectionVC[i];
-      }
-    #else
-      vertLight = - lightDirectionVC[i];
-    #endif
-    // here we assume achromatic light, only intensity
-    float dDotL = dot(viewDirectionVC, normalize(vertLight));
-    // isotropic scatter returns 0.5 instead of 1/4pi to increase intensity
-    float phase_attenuation = 0.5;
-    if (abs(anisotropy) > EPSILON){
-      phase_attenuation = phase_function(dDotL);
-    }
-    float vol_shadow = volume_shadow(posIS, normalize(rotateToIDX(vertLight)));
-    secondary_contrib += tColor * vDiffuse * lightColor[i] * vol_shadow * phase_attenuation;
-    secondary_contrib += tColor * vAmbient;
-  }
-  return secondary_contrib;
-}
-#endif
-
-//=======================================================================
-// local ambient occlusion
-#ifdef localAmbientOcclusionOn
-vec3 sample_direction_uniform(int i)
-{
-  float rand = random() * 0.5;
-  float theta = PI2 * (kernelSample[i][0] + rand);
-  float phi = acos(2.0 * (kernelSample[i][1] + rand) -1.0) / 2.5;
-  return normalize(vec3(cos(theta)*sin(phi), sin(theta)*sin(phi), cos(phi)));
-}
-
-// return a matrix that transform startDir into z axis; startDir should be normalized
-mat3 zBaseRotationalMatrix(vec3 startDir){
-  vec3 axis = cross(startDir, vec3(0.0,0.0,1.0));
-  float cosA = startDir.z;
-  float k = 1.0 / (1.0 + cosA);
-  mat3 matrix = mat3((axis.x * axis.x * k) + cosA, (axis.y * axis.x * k) - axis.z, (axis.z * axis.x * k) + axis.y,
-              (axis.x * axis.y * k) + axis.z, (axis.y * axis.y * k) + cosA, (axis.z * axis.y * k) - axis.x,
-              (axis.x * axis.z * k) - axis.y, (axis.y * axis.z * k) + axis.x, (axis.z * axis.z * k) + cosA);
-  return matrix;
-}
-
-float computeLAO(vec3 posIS, float op, vec3 lightDir, vec4 normal){
-  // apply LAO only at selected locations, otherwise return full brightness
-  if (normal.w > 0.0 && op > 0.05){
-    float total_transmittance = 0.0;
-    mat3 inverseRotateBasis = inverse(zBaseRotationalMatrix(normalize(-normal.xyz)));
-    vec3 currPos, randomDirStep;
-    float weight, transmittance, opacity;
-    for (int i = 0; i < kernelSize; i++)
-    {
-      randomDirStep = inverseRotateBasis * sample_direction_uniform(i) * sampleDistanceIS;
-      weight = 1.0 - dot(normalize(lightDir), normalize(randomDirStep));
-      currPos = posIS;
-      transmittance = 1.0;
-      for (int j = 0; j < kernelRadius ; j++){
-        currPos += randomDirStep;
-        // check if it's at clipping plane, if so return full brightness
-        if (all(greaterThan(currPos, vec3(EPSILON))) && all(lessThan(currPos,vec3(1.0-EPSILON)))){
-          opacity = texture2D(otexture, vec2(getTextureValue(currPos).r * oscale0 + oshift0, 0.5)).r;
-          #ifdef vtkGradientOpacityOn
-             opacity *= computeGradientOpacityFactor(normal.w, goscale0, goshift0, gomin0, gomax0);
-          #endif
-          transmittance *= 1.0 - opacity;
-        }
-        else{
-          break;
-        }
-      }
-      total_transmittance += transmittance / float(kernelRadius) * weight;
-
-      // early termination if fully translucent
-      if (total_transmittance > 1.0 - EPSILON){
-        return 1.0;
-      }
-    }
-    // average transmittance and reduce variance
-    return clamp(total_transmittance / float(kernelSize), 0.3, 1.0);
-  } else {
-    return 1.0;
-  }
 }
 #endif
 
@@ -841,94 +834,18 @@ float computeLAO(vec3 posIS, float op, vec3 lightDir, vec4 normal){
     tColor.rgb = tColor.rgb*(diffuse*vDiffuse + vAmbient) + specular*vSpecular;
   }
   #ifdef SurfaceShadowOn
-  #if vtkLightComplexity < 3
-    vec3 applyLightingDirectional(vec3 posIS, vec4 tColor, vec4 normal)
-    {
-      // everything in VC
-      vec3 diffuse = vec3(0.0);
-      vec3 specular = vec3(0.0);
-      #ifdef localAmbientOcclusionOn
-        vec3 ambient = vec3(0.0);
-      #endif
-      vec3 vertLightDirection;
-      for (int i = 0; i < lightNum; i++){
-        float ndotL,vdotR;
-        vertLightDirection = lightDirectionVC[i];
-        ndotL = dot(normal.xyz, vertLightDirection);
-        if (ndotL < 0.0 && twoSidedLighting)
-        {
-          ndotL = -ndotL;
-        }
-        if (ndotL > 0.0)
-        {
-          diffuse += ndotL * lightColor[i];
-          //specular
-          vdotR = dot(-rayDirVC, normalize(2.0 * ndotL * -normal.xyz + vertLightDirection));
-          if (vdotR > 0.0)
-          {
-            specular += pow(vdotR, vSpecularPower) * lightColor[i];
-          }
-        }
+    #if vtkLightComplexity < 3
+      vec3 applyLightingDirectional(vec3 posIS, vec4 tColor, vec4 normal)
+      {
+        // everything in VC
+        vec3 diffuse = vec3(0.0);
+        vec3 specular = vec3(0.0);
         #ifdef localAmbientOcclusionOn
-            ambient += computeLAO(posIS, tColor.a, vertLightDirection, normal);
+          vec3 ambient = vec3(0.0);
         #endif
-      }
-      #ifdef localAmbientOcclusionOn
-        return tColor.rgb * (diffuse * vDiffuse + vAmbient * ambient) + specular*vSpecular;
-      #else
-        return tColor.rgb * (diffuse * vDiffuse + vAmbient) + specular*vSpecular;
-      #endif
-    }
-  #else
-    vec3 applyLightingPositional(vec3 posIS, vec4 tColor, vec4 normal, vec3 posVC)
-    {
-      // everything in VC
-      vec3 diffuse = vec3(0.0);
-      vec3 specular = vec3(0.0);
-      #ifdef localAmbientOcclusionOn
-        vec3 ambient = vec3(0.0);
-      #endif
-      vec3 vertLightDirection;
-      for (int i = 0; i < lightNum; i++){
-        float distance,attenuation,ndotL,vdotR;
-        vec3 lightDir;
-        if (lightPositional[i] == 1){
-          lightDir = lightDirectionVC[i];
-          vertLightDirection = posVC - lightPositionVC[i];
-          distance = length(vertLightDirection);
-          vertLightDirection = normalize(vertLightDirection);
-          attenuation = 1.0 / (lightAttenuation[i].x
-                              + lightAttenuation[i].y * distance
-                              + lightAttenuation[i].z * distance * distance);
-          // per OpenGL standard cone angle is 90 or less for a spot light
-          if (lightConeAngle[i] <= 90.0){
-            float coneDot = dot(vertLightDirection, lightDir);
-            if (coneDot >= cos(radians(lightConeAngle[i]))){  // if inside cone
-              attenuation = attenuation * pow(coneDot, lightExponent[i]);
-            }
-            else {
-              attenuation = 0.0;
-            }
-          }
-          ndotL = dot(normal.xyz, vertLightDirection);
-          if (ndotL < 0.0 && twoSidedLighting)
-          {
-            ndotL = -ndotL;
-          }
-          if (ndotL > 0.0)
-          {
-            diffuse += ndotL * attenuation * lightColor[i];
-            //specular
-            vdotR = dot(-rayDirVC, normalize(2.0 * ndotL * -normal.xyz + vertLightDirection));
-            if (vdotR > 0.0)
-            {
-              specular += pow(vdotR, vSpecularPower) * attenuation * lightColor[i];
-            }
-          }
-          #ifdef localAmbientOcclusionOn
-            ambient += computeLAO(posIS, tColor.a, vertLightDirection, normal);
-          #endif
-        } else {
+        vec3 vertLightDirection;
+        for (int i = 0; i < lightNum; i++){
+          float ndotL,vdotR;
           vertLightDirection = lightDirectionVC[i];
           ndotL = dot(normal.xyz, vertLightDirection);
           if (ndotL < 0.0 && twoSidedLighting)
@@ -946,19 +863,96 @@ float computeLAO(vec3 posIS, float op, vec3 lightDir, vec4 normal){
             }
           }
           #ifdef localAmbientOcclusionOn
-            ambient += computeLAO(posIS, tColor.a, vertLightDirection, normal);
+              ambient += computeLAO(posIS, tColor.a, vertLightDirection, normal);
           #endif
         }
+        #ifdef localAmbientOcclusionOn
+          return tColor.rgb * (diffuse * vDiffuse + vAmbient * ambient) + specular*vSpecular;
+        #else
+          return tColor.rgb * (diffuse * vDiffuse + vAmbient) + specular*vSpecular;
+        #endif
       }
-      #ifdef localAmbientOcclusionOn
-        return tColor.rgb * (diffuse * vDiffuse + vAmbient * ambient) + specular*vSpecular;
-      #else
-        return tColor.rgb * (diffuse * vDiffuse + vAmbient) + specular*vSpecular;
-      #endif
-    }
-  #endif
+    #else
+      vec3 applyLightingPositional(vec3 posIS, vec4 tColor, vec4 normal, vec3 posVC)
+      {
+        // everything in VC
+        vec3 diffuse = vec3(0.0);
+        vec3 specular = vec3(0.0);
+        #ifdef localAmbientOcclusionOn
+          vec3 ambient = vec3(0.0);
+        #endif
+        vec3 vertLightDirection;
+        for (int i = 0; i < lightNum; i++){
+          float distance,attenuation,ndotL,vdotR;
+          vec3 lightDir;
+          if (lightPositional[i] == 1){
+            lightDir = lightDirectionVC[i];
+            vertLightDirection = posVC - lightPositionVC[i];
+            distance = length(vertLightDirection);
+            vertLightDirection = normalize(vertLightDirection);
+            attenuation = 1.0 / (lightAttenuation[i].x
+                                + lightAttenuation[i].y * distance
+                                + lightAttenuation[i].z * distance * distance);
+            // per OpenGL standard cone angle is 90 or less for a spot light
+            if (lightConeAngle[i] <= 90.0){
+              float coneDot = dot(vertLightDirection, lightDir);
+              if (coneDot >= cos(radians(lightConeAngle[i]))){  // if inside cone
+                attenuation = attenuation * pow(coneDot, lightExponent[i]);
+              }
+              else {
+                attenuation = 0.0;
+              }
+            }
+            ndotL = dot(normal.xyz, vertLightDirection);
+            if (ndotL < 0.0 && twoSidedLighting)
+            {
+              ndotL = -ndotL;
+            }
+            if (ndotL > 0.0)
+            {
+              diffuse += ndotL * attenuation * lightColor[i];
+              //specular
+              vdotR = dot(-rayDirVC, normalize(2.0 * ndotL * -normal.xyz + vertLightDirection));
+              if (vdotR > 0.0)
+              {
+                specular += pow(vdotR, vSpecularPower) * attenuation * lightColor[i];
+              }
+            }
+            #ifdef localAmbientOcclusionOn
+              ambient += computeLAO(posIS, tColor.a, vertLightDirection, normal);
+            #endif
+          } else {
+            vertLightDirection = lightDirectionVC[i];
+            ndotL = dot(normal.xyz, vertLightDirection);
+            if (ndotL < 0.0 && twoSidedLighting)
+            {
+              ndotL = -ndotL;
+            }
+            if (ndotL > 0.0)
+            {
+              diffuse += ndotL * lightColor[i];
+              //specular
+              vdotR = dot(-rayDirVC, normalize(2.0 * ndotL * -normal.xyz + vertLightDirection));
+              if (vdotR > 0.0)
+              {
+                specular += pow(vdotR, vSpecularPower) * lightColor[i];
+              }
+            }
+            #ifdef localAmbientOcclusionOn
+              ambient += computeLAO(posIS, tColor.a, vertLightDirection, normal);
+            #endif
+          }
+        }
+        #ifdef localAmbientOcclusionOn
+          return tColor.rgb * (diffuse * vDiffuse + vAmbient * ambient) + specular*vSpecular;
+        #else
+          return tColor.rgb * (diffuse * vDiffuse + vAmbient) + specular*vSpecular;
+        #endif
+      }
+    #endif
   #endif
 #endif
+
 
 //=======================================================================
 // Given a texture value compute the color and opacity
@@ -1063,22 +1057,22 @@ vec4 getColorForValue(vec4 tValue, vec3 posIS, vec3 tstep)
   #if defined(vtkGradientOpacityOn)
     #if !defined(vtkComponent0Proportional)
       goFactor.x =
-        computeGradientOpacityFactor(normal0.a, goscale0, goshift0, gomin0, gomax0);
+        computeGradientOpacityFactor(normal0, goscale0, goshift0, gomin0, gomax0);
     #endif
     #if defined(vtkIndependentComponentsOn) && (vtkNumComponents > 1)
       #if !defined(vtkComponent1Proportional)
         goFactor.y =
-          computeGradientOpacityFactor(normal1.a, goscale1, goshift1, gomin1, gomax1);
+          computeGradientOpacityFactor(normal1, goscale1, goshift1, gomin1, gomax1);
       #endif
       #if vtkNumComponents > 2
         #if !defined(vtkComponent2Proportional)
           goFactor.z =
-            computeGradientOpacityFactor(normal2.a, goscale2, goshift2, gomin2, gomax2);
+            computeGradientOpacityFactor(normal2, goscale2, goshift2, gomin2, gomax2);
         #endif
         #if vtkNumComponents > 3
           #if !defined(vtkComponent3Proportional)
             goFactor.w =
-              computeGradientOpacityFactor(normal3.a, goscale3, goshift3, gomin3, gomax3);
+              computeGradientOpacityFactor(normal3, goscale3, goshift3, gomin3, gomax3);
           #endif
         #endif
       #endif
@@ -1089,9 +1083,14 @@ vec4 getColorForValue(vec4 tValue, vec3 posIS, vec3 tstep)
   #if vtkNumComponents == 1
     vec4 tColor = texture2D(ctexture, vec2(tValue.r * cscale0 + cshift0, 0.5));
     tColor.a = goFactor.x*texture2D(otexture, vec2(tValue.r * oscale0 + oshift0, 0.5)).r;
-    if (tColor.a < EPSILON){
+    if (tColor.a < EPSILON) {
       return vec4(0.0);
     }
+    #if vtkBlendMode == 1001
+      if (normal0.w < GradientOpacityThreshold) {
+        tColor.a = tColor.a * (normal0.w / GradientOpacityThreshold);
+      }
+    #endif
   #endif
 
   #if defined(vtkIndependentComponentsOn) && vtkNumComponents >= 2
@@ -1162,11 +1161,11 @@ vec4 getColorForValue(vec4 tValue, vec3 posIS, vec3 tstep)
     #if !defined(vtkComponent0Proportional)
       #if vtkNumComponents == 1
         #ifdef SurfaceShadowOn
-            #if vtkLightComplexity < 3
-                vec3 tColorS = applyLightingDirectional(posIS, tColor, normalLight);
-            #else
-                vec3 tColorS = applyLightingPositional(posIS, tColor, normalLight, IStoVC(posIS));
-            #endif
+          #if vtkLightComplexity < 3
+            vec3 tColorS = applyLightingDirectional(posIS, tColor, normalLight);
+          #else
+            vec3 tColorS = applyLightingPositional(posIS, tColor, normalLight, IStoVC(posIS));
+          #endif
         #endif
 
         #ifdef VolumeShadowOn
@@ -1178,7 +1177,7 @@ vec4 getColorForValue(vec4 tValue, vec3 posIS, vec3 tstep)
             tColor.rgb = tColorVS;
           #endif
         #else
-            tColor.rgb = tColorS;
+          applyLighting(tColor.rgb, normal0);
         #endif
 
       #else
@@ -1186,22 +1185,248 @@ vec4 getColorForValue(vec4 tValue, vec3 posIS, vec3 tstep)
       #endif
     #endif
 
-    #if defined(vtkIndependentComponentsOn) && vtkNumComponents >= 2
-      #if !defined(vtkComponent1Proportional)
-        applyLighting(tColor1, normal1);
-      #endif
-    #if vtkNumComponents >= 3
-      #if !defined(vtkComponent2Proportional)
-        applyLighting(tColor2, normal2);
-      #endif
-    #if vtkNumComponents >= 4
-      #if !defined(vtkComponent3Proportional)
-        applyLighting(tColor3, normal3);
-      #endif
+  #if defined(vtkIndependentComponentsOn) && vtkNumComponents >= 2
+    #if !defined(vtkComponent1Proportional)
+      applyLighting(tColor1, normal1);
     #endif
+  #if vtkNumComponents >= 3
+    #if !defined(vtkComponent2Proportional)
+      applyLighting(tColor2, normal2);
     #endif
+  #if vtkNumComponents >= 4
+    #if !defined(vtkComponent3Proportional)
+      applyLighting(tColor3, normal3);
     #endif
   #endif
+  #endif
+  #endif
+#endif
+
+// perform final independent blend as needed
+#if defined(vtkIndependentComponentsOn) && vtkNumComponents >= 2
+  tColor.rgb += tColor1;
+#if vtkNumComponents >= 3
+  tColor.rgb += tColor2;
+#if vtkNumComponents >= 4
+  tColor.rgb += tColor3;
+#endif
+#endif
+#endif
+
+#endif
+return tColor;
+}
+//=======================================================================
+// Given a texture value compute the color and opacity
+//
+vec4 getSumColorForValue(vec4 tValue, vec4 tValue2, vec3 posIS, vec3 tstep)
+{
+#ifdef vtkImageLabelOutlineOn
+  vec3 centerPosIS = fragCoordToIndexSpace(gl_FragCoord); // pos in texture space
+  vec4 centerValue = getTextureValue(centerPosIS);
+  bool pixelOnBorder = false;
+  vec4 tColor = texture2D(ctexture, vec2(centerValue.r * cscale0 + cshift0, 0.5));
+
+  // Get alpha of segment from opacity function.
+  tColor.a = texture2D(otexture, vec2(centerValue.r * oscale0 + oshift0, 0.5)).r;
+
+  // Only perform outline check on fragments rendering voxels that aren't invisible.
+  // Saves a bunch of needless checks on the background.
+  // TODO define epsilon when building shader?
+  if (float(tColor.a) > 0.01) {
+    for (int i = -outlineThickness; i <= outlineThickness; i++) {
+      for (int j = -outlineThickness; j <= outlineThickness; j++) {
+        if (i == 0 || j == 0) {
+          continue;
+        }
+
+        vec4 neighborPixelCoord = vec4(gl_FragCoord.x + float(i),
+          gl_FragCoord.y + float(j),
+          gl_FragCoord.z, gl_FragCoord.w);
+
+        vec3 neighborPosIS = fragCoordToIndexSpace(neighborPixelCoord);
+        vec4 value = getTextureValue(neighborPosIS);
+
+        // If any of my neighbours are not the same value as I
+        // am, this means I am on the border of the segment.
+        // We can break the loops
+        if (any(notEqual(value, centerValue))) {
+          pixelOnBorder = true;
+          break;
+        }
+      }
+
+      if (pixelOnBorder == true) {
+        break;
+      }
+    }
+
+    // If I am on the border, I am displayed at full opacity
+    if (pixelOnBorder == true) {
+      tColor.a = 1.0;
+    }
+  }
+
+#else
+  // compute the normal and gradient magnitude if needed
+  // We compute it as a vec4 if possible otherwise a mat4
+  //
+  vec4 goFactor = vec4(1.0,1.0,1.0,1.0);
+
+  // compute the normal vectors as needed
+  #if (vtkLightComplexity > 0) || defined(vtkGradientOpacityOn)
+    #if defined(vtkIndependentComponentsOn) && (vtkNumComponents > 1)
+      mat4 normalMat = computeMat4Normal(posIS, tValue, tstep);
+      #if !defined(vtkComponent0Proportional)
+        vec4 normal0 = normalMat[0];
+      #endif
+      #if !defined(vtkComponent1Proportional)
+        vec4 normal1 = normalMat[1];
+      #endif
+      #if vtkNumComponents > 2
+        #if !defined(vtkComponent2Proportional)
+          vec4 normal2 = normalMat[2];
+        #endif
+        #if vtkNumComponents > 3
+          #if !defined(vtkComponent3Proportional)
+            vec4 normal3 = normalMat[3];
+          #endif
+        #endif
+      #endif
+    #else
+      vec4 normal0 = computeNormal(posIS, tstep);
+    #endif
+  #endif
+
+  // compute gradient opacity factors as needed
+  #if defined(vtkGradientOpacityOn)
+    #if !defined(vtkComponent0Proportional)
+      goFactor.x =
+        computeGradientOpacityFactor(normal0, goscale0, goshift0, gomin0, gomax0);
+    #endif
+    #if defined(vtkIndependentComponentsOn) && (vtkNumComponents > 1)
+      #if !defined(vtkComponent1Proportional)
+        goFactor.y =
+          computeGradientOpacityFactor(normal1, goscale1, goshift1, gomin1, gomax1);
+      #endif
+      #if vtkNumComponents > 2
+        #if !defined(vtkComponent2Proportional)
+          goFactor.z =
+            computeGradientOpacityFactor(normal2, goscale2, goshift2, gomin2, gomax2);
+        #endif
+        #if vtkNumComponents > 3
+          #if !defined(vtkComponent3Proportional)
+            goFactor.w =
+              computeGradientOpacityFactor(normal3, goscale3, goshift3, gomin3, gomax3);
+          #endif
+        #endif
+      #endif
+    #endif
+  #endif
+
+  // single component is always independent
+  #if vtkNumComponents == 1
+    float tmin = min(tValue.r * cscale0 + cshift0, tValue2.r * cscale0 + cshift0);
+    float tmax = max(tValue.r * cscale0 + cshift0, tValue2.r * cscale0 + cshift0);
+    vec4 tmpColor1 = texture2D(sctexture, vec2((tmin - 1.0 / 1024.0) , 0.5));
+    vec4 tmpColor2 = texture2D(sctexture, vec2(tmax , 0.5));
+    float width = (tmax - tmin) * 1024.0 + 1.0;
+    width = max(width, 1.0);
+    vec4 tColor = (tmpColor2 - tmpColor1) / width;
+
+    tmin = min(tValue.r * oscale0 + oshift0, tValue2.r * oscale0 + oshift0);
+    tmax = max(tValue.r * oscale0 + oshift0, tValue2.r * oscale0 + oshift0);
+    float tmpOpacity1 = texture2D(sotexture, vec2((tmin - 1.0 / 1024.0), 0.5)).r;
+    float tmpOpacity2 = texture2D(sotexture, vec2(tmax, 0.5)).r;
+    width = (tmax - tmin) * 1024.0 + 1.0;
+    width = max(width, 1.0);
+    tColor.a = goFactor.x*(tmpOpacity2 - tmpOpacity1) / width;
+  #endif
+
+  #if defined(vtkIndependentComponentsOn) && vtkNumComponents >= 2
+    vec4 tColor = mix0*texture2D(ctexture, vec2(tValue.r * cscale0 + cshift0, height0));
+    #if !defined(vtkComponent0Proportional)
+      tColor.a = goFactor.x*mix0*texture2D(otexture, vec2(tValue.r * oscale0 + oshift0, height0)).r;
+    #else
+      float pwfValue = texture2D(otexture, vec2(tValue.r * oscale0 + oshift0, height0)).r;
+      tColor *= pwfValue;
+      tColor.a *= mix(pwfValue, 1.0, (1.0 - mix0));
+    #endif
+
+    vec3 tColor1 = mix1*texture2D(ctexture, vec2(tValue.g * cscale1 + cshift1, height1)).rgb;
+    #if !defined(vtkComponent1Proportional)
+      tColor.a += goFactor.y*mix1*texture2D(otexture, vec2(tValue.g * oscale1 + oshift1, height1)).r;
+    #else
+      float pwfValue = texture2D(otexture, vec2(tValue.g * oscale1 + oshift1, height1)).r;
+      tColor1 *= pwfValue;
+      tColor.a *= mix(pwfValue, 1.0, (1.0 - mix1));
+    #endif
+
+    #if vtkNumComponents >= 3
+      vec3 tColor2 = mix2*texture2D(ctexture, vec2(tValue.b * cscale2 + cshift2, height2)).rgb;
+      #if !defined(vtkComponent2Proportional)
+        tColor.a += goFactor.z*mix2*texture2D(otexture, vec2(tValue.b * oscale2 + oshift2, height2)).r;
+      #else
+        float pwfValue = texture2D(otexture, vec2(tValue.b * oscale2 + oshift2, height2)).r;
+        tColor2 *= pwfValue;
+        tColor.a *= mix(pwfValue, 1.0, (1.0 - mix2));
+      #endif
+
+      #if vtkNumComponents >= 4
+        vec3 tColor3 = mix3*texture2D(ctexture, vec2(tValue.a * cscale3 + cshift3, height3)).rgb;
+        #if !defined(vtkComponent3Proportional)
+          tColor.a += goFactor.w*mix3*texture2D(otexture, vec2(tValue.a * oscale3 + oshift3, height3)).r;
+        #else
+          float pwfValue = texture2D(otexture, vec2(tValue.a * oscale3 + oshift3, height3)).r;
+          tColor3 *= pwfValue;
+          tColor.a *= mix(pwfValue, 1.0, (1.0 - mix3));
+        #endif
+      #endif
+    #endif
+  #else // then not independent
+
+  #if vtkNumComponents == 2
+    float lum = tValue.r * cscale0 + cshift0;
+    float alpha = goFactor.x*texture2D(otexture, vec2(tValue.a * oscale1 + oshift1, 0.5)).r;
+    vec4 tColor = vec4(lum, lum, lum, alpha);
+  #endif
+  #if vtkNumComponents == 3
+    vec4 tColor;
+    tColor.r = tValue.r * cscale0 + cshift0;
+    tColor.g = tValue.g * cscale1 + cshift1;
+    tColor.b = tValue.b * cscale2 + cshift2;
+    tColor.a = goFactor.x*texture2D(otexture, vec2(tValue.a * oscale0 + oshift0, 0.5)).r;
+  #endif
+  #if vtkNumComponents == 4
+    vec4 tColor;
+    tColor.r = tValue.r * cscale0 + cshift0;
+    tColor.g = tValue.g * cscale1 + cshift1;
+    tColor.b = tValue.b * cscale2 + cshift2;
+    tColor.a = goFactor.x*texture2D(otexture, vec2(tValue.a * oscale3 + oshift3, 0.5)).r;
+  #endif
+  #endif // dependent
+
+  // apply lighting if requested as appropriate
+  #if vtkLightComplexity > 0
+    #if !defined(vtkComponent0Proportional)
+      applyLighting(tColor.rgb, normal0);
+    #endif
+  #if defined(vtkIndependentComponentsOn) && vtkNumComponents >= 2
+    #if !defined(vtkComponent1Proportional)
+      applyLighting(tColor1, normal1);
+    #endif
+  #if vtkNumComponents >= 3
+    #if !defined(vtkComponent2Proportional)
+      applyLighting(tColor2, normal2);
+    #endif
+  #if vtkNumComponents >= 4
+    #if !defined(vtkComponent3Proportional)
+      applyLighting(tColor3, normal3);
+    #endif
+  #endif
+  #endif
+  #endif
+#endif
 
 // perform final independent blend as needed
 #if defined(vtkIndependentComponentsOn) && vtkNumComponents >= 2
@@ -1259,6 +1484,7 @@ void applyBlend(vec3 posIS, vec3 endIS, vec3 tdims)
   // local vars for the loop
   vec4 color = vec4(0.0, 0.0, 0.0, 0.0);
   vec4 tValue;
+  vec4 tValue2;
   vec4 tColor;
 
   // if we have less than one step then pick the middle point
@@ -1465,6 +1691,123 @@ void applyBlend(vec3 posIS, vec3 endIS, vec3 tdims)
     gl_FragData[0] = texture2D(ctexture, vec2(normalizedRayIntensity , 0.5));
 
   #endif
+
+  #if vtkBlendMode == 1000 // custom blend mode pre-integration
+
+    // now map through opacity and color
+    tColor = getColorForValue(tValue, posIS, tstep);
+
+    // handle very thin volumes
+    if (raySteps <= 1.0)
+    {
+      tColor.a = 1.0 - pow(1.0 - tColor.a, raySteps);
+      gl_FragData[0] = tColor;
+      return;
+    }
+
+    tColor.a = 1.0 - pow(1.0 - tColor.a, jitter);
+    color = vec4(tColor.rgb*tColor.a, tColor.a);
+    posIS += (jitter*stepIS);
+
+    for (int i = 0; i < //VTK::MaximumSamplesValue ; ++i)
+    {
+      if (stepsTraveled + 1.0 >= raySteps) { break; }
+
+      // compute the scalar, and next scalar
+      tValue = getTextureValue(posIS);
+      tValue2 = getTextureValue(posIS + stepIS);
+
+      // now map through opacity and color
+      // preintegration
+      tColor = getSumColorForValue(tValue, tValue2, posIS, tstep);
+
+      float mix = (1.0 - color.a);
+
+      // this line should not be needed but nvidia seems to not handle
+      // the break correctly on windows/chrome 58 angle
+      //mix = mix * sign(max(raySteps - stepsTraveled - 1.0, 0.0));
+
+      color = color + vec4(tColor.rgb*tColor.a, tColor.a)*mix;
+      stepsTraveled++;
+      posIS += stepIS;
+      if (color.a > 0.99) { color.a = 1.0; break; }
+    }
+
+    if (color.a < 0.99 && (raySteps - stepsTraveled) > 0.0)
+    {
+      posIS = endIS;
+
+      // compute the scalar
+      tValue = getTextureValue(posIS);
+
+      // now map through opacity and color
+      tColor = getColorForValue(tValue, posIS, tstep);
+      tColor.a = 1.0 - pow(1.0 - tColor.a, raySteps - stepsTraveled);
+
+      float mix = (1.0 - color.a);
+      color = color + vec4(tColor.rgb*tColor.a, tColor.a)*mix;
+    }
+
+    gl_FragData[0] = vec4(color.rgb/color.a, color.a);
+
+    #endif
+    #if vtkBlendMode == 1001 // custom blend mode gradiant opacity
+
+    // now map through opacity and color
+    tColor = getColorForValue(tValue, posIS, tstep);
+
+    // handle very thin volumes
+    if (raySteps <= 1.0)
+    {
+      tColor.a = 1.0 - pow(1.0 - tColor.a, raySteps);
+      gl_FragData[0] = tColor;
+      return;
+    }
+
+    tColor.a = 1.0 - pow(1.0 - tColor.a, jitter);
+    color = vec4(tColor.rgb*tColor.a, tColor.a);
+    posIS += (jitter*stepIS);
+
+    for (int i = 0; i < //VTK::MaximumSamplesValue ; ++i)
+    {
+      if (stepsTraveled + 1.0 >= raySteps) { break; }
+
+      // compute the scalar
+      tValue = getTextureValue(posIS);
+
+      // now map through opacity and color
+      tColor = getColorForValue(tValue, posIS, tstep);
+
+      float mix = (1.0 - color.a);
+
+      // this line should not be needed but nvidia seems to not handle
+      // the break correctly on windows/chrome 58 angle
+      //mix = mix * sign(max(raySteps - stepsTraveled - 1.0, 0.0));
+
+      color = color + vec4(tColor.rgb*tColor.a, tColor.a)*mix;
+      stepsTraveled++;
+      posIS += stepIS;
+      if (color.a > 0.99) { color.a = 1.0; break; }
+    }
+
+    if (color.a < 0.99 && (raySteps - stepsTraveled) > 0.0)
+    {
+      posIS = endIS;
+
+      // compute the scalar
+      tValue = getTextureValue(posIS);
+
+      // now map through opacity and color
+      tColor = getColorForValue(tValue, posIS, tstep);
+      tColor.a = 1.0 - pow(1.0 - tColor.a, raySteps - stepsTraveled);
+
+      float mix = (1.0 - color.a);
+      color = color + vec4(tColor.rgb*tColor.a, tColor.a)*mix;
+    }
+
+    gl_FragData[0] = vec4(color.rgb/color.a, color.a);
+
+    #endif
 }
 
 //=======================================================================
@@ -1517,7 +1860,7 @@ vec2 computeRayDistances(vec3 rayDir, vec3 tdims)
 {
   vec2 dists = vec2(100.0*camFar, -1.0);
 
-  vec3 vSize = vSpacing*tdims;
+  vec3 vSize = vSpacing*(tdims);
 
   // all this is in View Coordinates
   getRayPointIntersectionBounds(vertexVCVSOutput, rayDir,
@@ -1591,7 +1934,6 @@ void computeIndexSpaceValues(out vec3 pos, out vec3 endPos, vec3 rayDir, vec2 di
 
 void main()
 {
-
   if (cameraParallel == 1)
   {
     // Camera is parallel, so the rayDir is just the direction of the camera.

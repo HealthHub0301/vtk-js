@@ -1,3 +1,4 @@
+/* eslint-disable */
 import macro from 'vtk.js/Sources/macros';
 import vtkPolygon from 'vtk.js/Sources/Common/DataModel/Polygon';
 import vtkPolyData from 'vtk.js/Sources/Common/DataModel/PolyData';

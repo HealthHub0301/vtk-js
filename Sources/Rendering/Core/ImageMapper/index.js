@@ -212,7 +212,6 @@ function vtkImageMapper(publicAPI, model) {
     if (!model.useCustomExtents) {
       return image.getBounds();
     }
-
     const ex = model.customDisplayExtent.slice();
     const { ijkMode } = publicAPI.getClosestIJKAxis();
     let nSlice = model.slice;
@@ -290,6 +289,25 @@ const DEFAULT_VALUES = {
   renderToRectangle: false,
   sliceAtFocalPoint: false,
   preferSizeOverAccuracy: false, // Whether to use halfFloat representation of float, when it is inaccurate
+  // <--MPR 관련 파라미터 추가-->
+  MprThickness: 10,
+  MprSlicingMode: 2,
+  MprMode: 0,
+  CprThicknessMode: false,
+  CprThickness: 10,
+  CprPoints: null,
+  CprImageWidth: 0,
+  CprPositionMap: null,
+  CprCenter: [0, 0],
+  CprScale: 1,
+  originalData: null,
+  slice: 0,
+  // <--------------------->
+  RescaleSlope: 1,
+  RescaleIntercept: 0,
+  XdimSize: 0,
+  YdimSize: 0,
+  ZdimSize: 0,
 };
 
 // ----------------------------------------------------------------------------
@@ -306,6 +324,26 @@ export function extend(publicAPI, model, initialValues = {}) {
     'renderToRectangle',
     'sliceAtFocalPoint',
     'preferSizeOverAccuracy',
+    // <--MPR 관련 파라미터 추가-->
+    'MprThickness',
+    'MprSlicingMode',
+    'MprMode',
+    // <--CPR 관련 파라미터 추가-->
+    'CprThicknessMode',
+    'CprThickness',
+    'CprPoints',
+    'CprImageWidth',
+    'CprPositionMap',
+    'CprCenter',
+    'CprScale',
+    'originalData',
+    'RescaleSlope',
+    'RescaleIntercept',
+    'XdimSize',
+    'YdimSize',
+    'ZdimSize',
+    'slice',
+    // <--------------------->
   ]);
 
   CoincidentTopologyHelper.implementCoincidentTopologyMethods(publicAPI, model);

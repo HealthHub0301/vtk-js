@@ -1,3 +1,4 @@
+/* eslint-disable */
 import { vec4, mat4 } from 'gl-matrix';
 
 import macro, { vtkWarningMacro } from 'vtk.js/Sources/macros';
@@ -315,6 +316,7 @@ function vtkImageReslice(publicAPI, model) {
     const newmat = indexMatrix;
     const outputStencil = null;
 
+    //console.log("outext : " + outExt);
     // multiple samples for thick slabs
     const nsamples = Math.max(model.slabNumberOfSlices, 1);
 
@@ -436,6 +438,7 @@ function vtkImageReslice(publicAPI, model) {
     iter.initialize(output, outExt, model.stencil, null);
     const outPtr0 = iter.getScalars(output, 0);
     let outPtrIndex = 0;
+    let count = 0;
     const outTmp = macro.newTypedArray(
       scalarType,
       vtkBoundingBox.getDiagonalLength(outExt) * outComponents * 2
@@ -447,6 +450,8 @@ function vtkImageReslice(publicAPI, model) {
     for (; !iter.isAtEnd(); iter.nextSpan()) {
       const span = iter.spanEndId() - iter.getId();
       outPtrIndex = iter.getId() * scalarSize * outComponents;
+
+      //console.log(outPtrIndex, iter.getId(), scalarSize, outComponents);
 
       if (!iter.isInStencil()) {
         // clear any regions that are outside the stencil
@@ -475,6 +480,11 @@ function vtkImageReslice(publicAPI, model) {
           inPoint1[1] = inPoint0[1] + idY * yAxis[1];
           inPoint1[2] = inPoint0[2] + idY * yAxis[2];
           inPoint1[3] = inPoint0[3] + idY * yAxis[3];
+        }
+        model.inpoint = inPoint1;
+
+        if (model.isMPRCustom) {
+          return;
         }
 
         // march through one row of the output image
@@ -678,8 +688,10 @@ function vtkImageReslice(publicAPI, model) {
               // when memcpy is used with a constant size, the compiler will
               // optimize away the function call and use the minimum number
               // of instructions necessary to perform the copy
+              
               switch (bytesPerPixel) {
                 case 1:
+
                   outPtr0[outPtrIndex++] = inPtrTmp0[offset];
                   break;
                 case 2:
@@ -706,7 +718,7 @@ function vtkImageReslice(publicAPI, model) {
               break;
             }
           }
-
+          
           // clear trailing out-of-bounds pixels
           outPtr = outPtrTmp;
           const n = setpixels(
@@ -1090,6 +1102,8 @@ const DEFAULT_VALUES = {
   // resliceTransform: null,
   interpolator: vtkImageInterpolator.newInstance(),
   usePermuteExecute: false, // no supported yet
+  inpoint: null,
+  isMPRCustom: false,
 };
 
 // ----------------------------------------------------------------------------
@@ -1119,6 +1133,8 @@ export function extend(publicAPI, model, initialValues = {}) {
     'slabTrapezoidIntegration',
     'slabNumberOfSlices',
     'slabSliceSpacingFraction',
+    'inpoint',
+    'isMPRCustom',
   ]);
 
   macro.setGetArray(publicAPI, model, ['outputOrigin', 'outputSpacing'], 3);

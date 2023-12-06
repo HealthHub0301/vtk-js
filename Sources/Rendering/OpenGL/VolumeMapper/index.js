@@ -1,3 +1,4 @@
+/* eslint-disable */
 import * as macro from 'vtk.js/Sources/macros';
 import { vec3, mat3, mat4 } from 'gl-matrix';
 // import vtkBoundingBox       from 'vtk.js/Sources/Common/DataModel/BoundingBox';
@@ -20,11 +21,9 @@ import {
   OpacityMode,
 } from 'vtk.js/Sources/Rendering/Core/VolumeProperty/Constants';
 import { BlendMode } from 'vtk.js/Sources/Rendering/Core/VolumeMapper/Constants';
-
-import vtkVolumeVS from 'vtk.js/Sources/Rendering/OpenGL/glsl/vtkVolumeVS.glsl';
-import vtkVolumeFS from 'vtk.js/Sources/Rendering/OpenGL/glsl/vtkVolumeFS.glsl';
-
 import { registerOverride } from 'vtk.js/Sources/Rendering/OpenGL/ViewNodeFactory';
+import vtkVolumeVS from 'vtk.js/Sources/Rendering/OpenGL/glsl/vtkVolumeVS.glsl';
+import vtkVolumeFS from 'vtk.js/Sources/Rendering/OpenGL/glsl/vtkHHVolumeFS.glsl';
 
 const { vtkWarningMacro, vtkErrorMacro } = macro;
 
@@ -92,7 +91,9 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
       // Per Component?
       model.scalarTexture.setOpenGLRenderWindow(model._openGLRenderWindow);
       model.colorTexture.setOpenGLRenderWindow(model._openGLRenderWindow);
+      model.scolorTexture.setOpenGLRenderWindow(model._openGLRenderWindow);
       model.opacityTexture.setOpenGLRenderWindow(model._openGLRenderWindow);
+      model.sopacityTextrue.setOpenGLRenderWindow(model._openGLRenderWindow);
 
       model.openGLVolume = publicAPI.getFirstAncestorOfType('vtkOpenGLVolume');
       const actor = model.openGLVolume.getRenderable();
@@ -268,10 +269,8 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
         'vec4 depthVec = texture2D(zBufferTexture, vec2(gl_FragCoord.x / vpZWidth, gl_FragCoord.y/vpZHeight));',
         'float zdepth = (depthVec.r*256.0 + depthVec.g)/257.0;',
         'zdepth = zdepth * 2.0 - 1.0;',
-        'if (cameraParallel == 0) {',
-        'zdepth = -2.0 * camFar * camNear / (zdepth*(camFar-camNear)-(camFar+camNear)) - camNear;}',
-        'else {',
-        'zdepth = (zdepth + 1.0) * 0.5 * (camFar - camNear);}\n',
+        // FIXME: pick mode일 때만 zdepth를 적용시키고 싶음
+        'zdepth = -2.0 * camFar * camNear / (zdepth*(camFar-camNear)-(camFar+camNear)) - camNear;',
         'zdepth = -zdepth/rayDir.z;',
         'dists.y = min(zdepth,dists.y);',
       ]).result;
@@ -417,7 +416,12 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
     let lightComplexity = 0;
     if (
       actor.getProperty().getShade() &&
-      model.renderable.getBlendMode() === BlendMode.COMPOSITE_BLEND
+      (
+        model.renderable.getBlendMode() === BlendMode.COMPOSITE_BLEND ||
+        model.renderable.getBlendMode() === BlendMode.ADDITIVE_INTENSITY_BLEND ||
+        model.renderable.getBlendMode() === BlendMode.INTERPOLATED_BLEND ||
+        model.renderable.getBlendMode() === BlendMode.GRADIENT_OPACITY_BLEND
+      )
     ) {
       // consider the lighting complexity to determine which case applies
       // simple headlight, Light Kit, the whole feature set of VTK
@@ -971,9 +975,13 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
 
   publicAPI.setPropertyShaderParameters = (cellBO, ren, actor) => {
     const program = cellBO.getProgram();
+    //Gradient Opacity 의 threshold값 설정
+    program.setUniformf('GradientOpacityThreshold', 0.1);
 
     program.setUniformi('ctexture', model.colorTexture.getTextureUnit());
+    program.setUniformi('sctexture', model.scolorTexture.getTextureUnit());
     program.setUniformi('otexture', model.opacityTexture.getTextureUnit());
+    program.setUniformi('sotexture', model.sopacityTextrue.getTextureUnit());
     program.setUniformi('jtexture', model.jitterTexture.getTextureUnit());
 
     const volInfo = model.scalarTexture.getVolumeInfo();
@@ -1010,6 +1018,12 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
       program.setUniformf(`cshift${i}`, cshift);
       program.setUniformf(`cscale${i}`, cScale);
     }
+    program.setUniformf('rescaleSlope', model.renderable.getRescaleSlope());
+    program.setUniformf(
+      'rescaleIntercept',
+      model.renderable.getRescaleIntercept() /
+        (model.renderable.getPixelRange() / 2)
+    );
 
     if (model.gopacity) {
       if (iComps) {
@@ -1243,7 +1257,15 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
     if (iType === InterpolationType.NEAREST) {
       model.scalarTexture.setMinificationFilter(Filter.NEAREST);
       model.scalarTexture.setMagnificationFilter(Filter.NEAREST);
-    } else {
+    }
+    //<--영역 선택 기능을 사용중일 때, 볼륨 렌더러에서 선택 범위의 색상이 깨지는 오류를 방지하기 위해 nearest filter 설정-->
+    //텍스처에 저장된 mask 값이 근사화되어 다른 값(다른 색상)으로 변경돼 잘못 가시화될 수 있습니다. 이를 해결하기 위해 nearest filter를 사용합니다.
+    else if(model.renderable.getPaintMode()) {
+      model.scalarTexture.setMinificationFilter(Filter.NEAREST);
+      model.scalarTexture.setMagnificationFilter(Filter.NEAREST);
+    }
+    //<--------------------->
+    else {
       model.scalarTexture.setMinificationFilter(Filter.LINEAR);
       model.scalarTexture.setMagnificationFilter(Filter.LINEAR);
     }
@@ -1263,7 +1285,9 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
     // render the texture
     model.scalarTexture.activate();
     model.opacityTexture.activate();
+    model.sopacityTextrue.activate();
     model.colorTexture.activate();
+    model.scolorTexture.activate();
     model.jitterTexture.activate();
 
     publicAPI.updateShaders(model.tris, ren, actor);
@@ -1277,7 +1301,9 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
 
     model.scalarTexture.deactivate();
     model.colorTexture.deactivate();
+    model.scolorTexture.deactivate();
     model.opacityTexture.deactivate();
+    model.sopacityTextrue.deactivate();
     model.jitterTexture.deactivate();
   };
 
@@ -1441,8 +1467,16 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
       for (let i = 0; i < 32 * 32; ++i) {
         oTable[i] = 255.0 * Math.random();
       }
-      model.jitterTexture.setMinificationFilter(Filter.LINEAR);
-      model.jitterTexture.setMagnificationFilter(Filter.LINEAR);
+      //<--영역 선택 기능을 사용중일 때, 볼륨 렌더러에서 선택 범위의 색상이 깨지는 오류를 방지하기 위해 nearest filter 설정-->
+      //텍스처에 저장된 mask 값이 근사화되어 다른 값(다른 색상)으로 변경돼 잘못 가시화될 수 있습니다. 이를 해결하기 위해 nearest filter를 사용합니다.
+      if(model.renderable.getPaintMode()) {
+        model.jitterTexture.setMinificationFilter(Filter.NEAREST);
+        model.jitterTexture.setMagnificationFilter(Filter.NEAREST);
+      }
+      else {
+        model.jitterTexture.setMinificationFilter(Filter.LINEAR);
+        model.jitterTexture.setMagnificationFilter(Filter.LINEAR);
+      }
       model.jitterTexture.create2DFromRaw(
         32,
         32,
@@ -1450,6 +1484,7 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
         VtkDataTypes.UNSIGNED_CHAR,
         oTable
       );
+      //<--------------------->
     }
 
     const numComp = scalars.getNumberOfComponents();
@@ -1470,6 +1505,7 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
       const oSize = oWidth * 2 * numIComps;
       const ofTable = new Float32Array(oSize);
       const tmpTable = new Float32Array(oWidth);
+      const sofTable = new Float32Array(oSize);
 
       for (let c = 0; c < numIComps; ++c) {
         const ofun = vprop.getScalarOpacity(c);
@@ -1479,18 +1515,44 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
 
         const oRange = ofun.getRange();
         ofun.getTable(oRange[0], oRange[1], oWidth, tmpTable, 1);
+
         // adjust for sample distance etc
         for (let i = 0; i < oWidth; ++i) {
           ofTable[c * oWidth * 2 + i] =
             1.0 - (1.0 - tmpTable[i]) ** opacityFactor;
           ofTable[c * oWidth * 2 + i + oWidth] = ofTable[c * oWidth * 2 + i];
         }
+        sofTable[c * oWidth * 2] = ofTable[c * oWidth * 2]
+        for(let i = 1 ; i < oWidth; ++i){
+          sofTable[c * oWidth * 2 + i] = ofTable[c * oWidth * 2 + i] + sofTable[c * oWidth * 2 + i - 1];
+          sofTable[c * oWidth * 2 + i + oWidth] = sofTable[c * oWidth * 2 + i];
+        }
       }
-
-      model.opacityTexture.releaseGraphicsResources(model._openGLRenderWindow);
-      model.opacityTexture.resetFormatAndType();
-      model.opacityTexture.setMinificationFilter(Filter.LINEAR);
-      model.opacityTexture.setMagnificationFilter(Filter.LINEAR);
+      //<--영역 선택 기능을 사용중일 때, 볼륨 렌더러에서 선택 범위의 색상이 깨지는 오류를 방지하기 위해 nearest filter 설정-->
+      //텍스처에 저장된 mask 값이 근사화되어 다른 값(다른 색상)으로 변경돼 잘못 가시화될 수 있습니다. 이를 해결하기 위해 nearest filter를 사용합니다.
+      if(model.renderable.getPaintMode()) {
+        model.opacityTexture.releaseGraphicsResources(model._openGLRenderWindow);
+        model.opacityTexture.resetFormatAndType();
+        model.opacityTexture.setMinificationFilter(Filter.NEAREST);
+        model.opacityTexture.setMagnificationFilter(Filter.NEAREST);
+  
+        model.sopacityTextrue.releaseGraphicsResources(model._openGLRenderWindow);
+        model.sopacityTextrue.resetFormatAndType();
+        model.sopacityTextrue.setMinificationFilter(Filter.NEAREST);
+        model.sopacityTextrue.setMagnificationFilter(Filter.NEAREST);
+      }
+      else {
+        model.opacityTexture.releaseGraphicsResources(model._openGLRenderWindow);
+        model.opacityTexture.resetFormatAndType();
+        model.opacityTexture.setMinificationFilter(Filter.LINEAR);
+        model.opacityTexture.setMagnificationFilter(Filter.LINEAR);
+  
+        model.sopacityTextrue.releaseGraphicsResources(model._openGLRenderWindow);
+        model.sopacityTextrue.resetFormatAndType();
+        model.sopacityTextrue.setMinificationFilter(Filter.LINEAR);
+        model.sopacityTextrue.setMagnificationFilter(Filter.LINEAR);
+      }
+      //<--------------------->
 
       // use float texture where possible because we really need the resolution
       // for this table. Errors in low values of opacity accumulate to
@@ -1508,6 +1570,13 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
           VtkDataTypes.FLOAT,
           ofTable
         );
+        model.sopacityTextrue.create2DFromRaw(
+          oWidth,
+          2 * numIComps,
+          1,
+          VtkDataTypes.FLOAT,
+          sofTable
+        );
       } else {
         const oTable = new Uint8Array(oSize);
         for (let i = 0; i < oSize; ++i) {
@@ -1519,6 +1588,18 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
           1,
           VtkDataTypes.UNSIGNED_CHAR,
           oTable
+        );
+        const soTable = new Float32Array(oSize);
+        soTable[0] = oTable[0];
+        for (let i = 1; i < oSize; ++i) {
+          soTable[i] = oTable[i] + soTable[i - 1];
+        }
+        model.sopacityTextrue.create2DFromRaw(
+          oWidth,
+          2 * numIComps,
+          1,
+          VtkDataTypes.FLOAT,
+          soTable
         );
       }
       model.opacityTextureString = toString;
@@ -1547,6 +1628,7 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
       const cWidth = 1024;
       const cSize = cWidth * 2 * numIComps * 3;
       const cTable = new Uint8Array(cSize);
+      const scTable = new Float32Array(cSize);
       const tmpTable = new Float32Array(cWidth * 3);
 
       for (let c = 0; c < numIComps; ++c) {
@@ -1557,12 +1639,47 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
           cTable[c * cWidth * 6 + i] = 255.0 * tmpTable[i];
           cTable[c * cWidth * 6 + i + cWidth * 3] = 255.0 * tmpTable[i];
         }
-      }
 
-      model.colorTexture.releaseGraphicsResources(model._openGLRenderWindow);
-      model.colorTexture.resetFormatAndType();
-      model.colorTexture.setMinificationFilter(Filter.LINEAR);
-      model.colorTexture.setMagnificationFilter(Filter.LINEAR);
+        scTable[c * cWidth * 6 + 0] = tmpTable[0];
+        scTable[c * cWidth * 6 + 1] = tmpTable[1];
+        scTable[c * cWidth * 6 + 2] = tmpTable[2];
+        scTable[c * cWidth * 6 + 0 + cWidth * 3] = tmpTable[0];
+        scTable[c * cWidth * 6 + 1 + cWidth * 3] =  tmpTable[1];
+        scTable[c * cWidth * 6 + 2 + cWidth * 3] =  tmpTable[2];
+        for (let i = 3; i < cWidth * 3; i += 3) {
+          scTable[c * cWidth * 6 + i + 0] = tmpTable[i + 0] + scTable[c * cWidth * 6 + i + 0 - 3];
+          scTable[c * cWidth * 6 + i + 1] = tmpTable[i + 1] + scTable[c * cWidth * 6 + i + 1 - 3];
+          scTable[c * cWidth * 6 + i + 2] = tmpTable[i + 2] + scTable[c * cWidth * 6 + i + 2 - 3];
+          scTable[c * cWidth * 6 + i + 0 + cWidth * 3] = scTable[c * cWidth * 6 + i + 0]
+          scTable[c * cWidth * 6 + i + 1 + cWidth * 3] = scTable[c * cWidth * 6 + i + 1]
+          scTable[c * cWidth * 6 + i + 2 + cWidth * 3] = scTable[c * cWidth * 6 + i + 2]
+        }
+      }
+      //<--영역 선택 기능을 사용중일 때, 볼륨 렌더러에서 선택 범위의 색상이 깨지는 오류를 방지하기 위해 nearest filter 설정-->
+      //텍스처에 저장된 mask 값이 근사화되어 다른 값(다른 색상)으로 변경돼 잘못 가시화될 수 있습니다. 이를 해결하기 위해 nearest filter를 사용합니다.
+      if (model.renderable.getPaintMode()) {
+        model.colorTexture.releaseGraphicsResources(model._openGLRenderWindow);
+        model.colorTexture.resetFormatAndType();
+        model.colorTexture.setMinificationFilter(Filter.NEAREST);
+        model.colorTexture.setMagnificationFilter(Filter.NEAREST);
+  
+        model.scolorTexture.releaseGraphicsResources(model._openGLRenderWindow);
+        model.scolorTexture.resetFormatAndType();
+        model.scolorTexture.setMinificationFilter(Filter.NEAREST);
+        model.scolorTexture.setMagnificationFilter(Filter.NEAREST);
+      }
+      else {
+        model.colorTexture.releaseGraphicsResources(model._openGLRenderWindow);
+        model.colorTexture.resetFormatAndType();
+        model.colorTexture.setMinificationFilter(Filter.LINEAR);
+        model.colorTexture.setMagnificationFilter(Filter.LINEAR);
+
+        model.scolorTexture.releaseGraphicsResources(model._openGLRenderWindow);
+        model.scolorTexture.resetFormatAndType();
+        model.scolorTexture.setMinificationFilter(Filter.LINEAR);
+        model.scolorTexture.setMagnificationFilter(Filter.LINEAR);
+      }
+      //<--------------------->
 
       model.colorTexture.create2DFromRaw(
         cWidth,
@@ -1570,6 +1687,13 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
         3,
         VtkDataTypes.UNSIGNED_CHAR,
         cTable
+      );
+      model.scolorTexture.create2DFromRaw(
+        cWidth,
+        2 * numIComps,
+        3,
+        VtkDataTypes.FLOAT,
+        scTable
       );
       model.colorTextureString = toString;
       if (colorTransferFunc) {
@@ -1694,8 +1818,10 @@ const DEFAULT_VALUES = {
   scalarTexture: null,
   scalarTextureString: null,
   opacityTexture: null,
+  sopacityTextrue: null,
   opacityTextureString: null,
   colorTexture: null,
+  scolorTexture:null,
   colorTextureString: null,
   jitterTexture: null,
   tris: null,
@@ -1731,7 +1857,9 @@ export function extend(publicAPI, model, initialValues = {}) {
   model.tris = vtkHelper.newInstance();
   model.scalarTexture = vtkOpenGLTexture.newInstance();
   model.opacityTexture = vtkOpenGLTexture.newInstance();
+  model.sopacityTextrue = vtkOpenGLTexture.newInstance();
   model.colorTexture = vtkOpenGLTexture.newInstance();
+  model.scolorTexture = vtkOpenGLTexture.newInstance();
   model.jitterTexture = vtkOpenGLTexture.newInstance();
   model.jitterTexture.setWrapS(Wrap.REPEAT);
   model.jitterTexture.setWrapT(Wrap.REPEAT);
@@ -1744,7 +1872,7 @@ export function extend(publicAPI, model, initialValues = {}) {
   model.projectionToWorld = mat4.identity(new Float64Array(16));
 
   // Build VTK API
-  macro.setGet(publicAPI, model, ['context']);
+  macro.setGet(publicAPI, model, ['context', 'windowCenter', 'windowWidth']);
 
   // Object methods
   vtkOpenGLVolumeMapper(publicAPI, model);

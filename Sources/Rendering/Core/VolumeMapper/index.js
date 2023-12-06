@@ -1,3 +1,4 @@
+/* eslint-disable */
 import macro from 'vtk.js/Sources/macros';
 import * as vtkMath from 'vtk.js/Sources/Common/Core/Math';
 import Constants from 'vtk.js/Sources/Rendering/Core/VolumeMapper/Constants';
@@ -92,6 +93,15 @@ function vtkVolumeMapper(publicAPI, model) {
     publicAPI.setBlendMode(BlendMode.RADON_TRANSFORM_BLEND);
   };
 
+  // add set custom blend mode
+  publicAPI.setBlendModeToInterpolatedIntensity = () => {
+    publicAPI.setBlendMode(BlendMode.INTERPOLATED_BLEND);
+  };
+
+  publicAPI.setBlendModeToGradientOpacity = () => {
+    publicAPI.setBlendMode(BlendMode.GRADIENT_OPACITY_BLEND);
+  };
+
   publicAPI.getBlendModeAsString = () =>
     macro.enumToString(BlendMode, model.blendMode);
 
@@ -153,6 +163,12 @@ const DEFAULT_VALUES = {
   ipScalarRange: [-1000000.0, 1000000.0],
   filterMode: FilterMode.OFF, // ignored by WebGL so no behavior change
   preferSizeOverAccuracy: false, // Whether to use halfFloat representation of float, when it is inaccurate
+  pixelRange: 65536,
+  rescaleSlope: 1,
+  rescaleIntercept: 0,
+  //<--영역 선택 기능이 작동 중인지 여부를 판별하는 파라미터 추가-->
+  paintMode: false,
+  //<--------------------->
   computeNormalFromOpacity: false,
   // volume shadow parameters
   volumetricScatteringBlending: 0.0,
@@ -182,6 +198,12 @@ export function extend(publicAPI, model, initialValues = {}) {
     'blendMode',
     'filterMode',
     'preferSizeOverAccuracy',
+    'pixelRange',
+    'rescaleSlope',
+    'rescaleIntercept',
+    //<--영역 선택 기능이 작동 중인지 여부를 판별하는 파라미터 추가-->
+    'paintMode',
+    //<--------------------->
     'computeNormalFromOpacity',
     'volumetricScatteringBlending',
     'globalIlluminationReach',

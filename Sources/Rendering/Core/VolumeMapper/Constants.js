@@ -5,6 +5,9 @@ export const BlendMode = {
   AVERAGE_INTENSITY_BLEND: 3,
   ADDITIVE_INTENSITY_BLEND: 4,
   RADON_TRANSFORM_BLEND: 5,
+  // custom blend mode를 엄청나게 큰 수를 줘서 겹칠 일 없게
+  INTERPOLATED_BLEND: 1000,
+  GRADIENT_OPACITY_BLEND: 1001,
 };
 
 export const FilterMode = {

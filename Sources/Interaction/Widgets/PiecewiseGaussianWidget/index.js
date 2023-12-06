@@ -503,11 +503,19 @@ function vtkPiecewiseGaussianWidget(publicAPI, model) {
       numberOfBinsToSkip = 1,
       numberOfComponents = 1,
       component = 0,
+      rescaleSlope = 1,
+      rescaleIntercept = 0,
     } = {}
   ) => {
     model.histogram = null;
     model.histogramArray = array;
-    model.dataRange = vtkMath.arrayRange(array, component, numberOfComponents);
+    model.dataRange = vtkMath.arrayRange(
+      array,
+      component,
+      numberOfComponents,
+      rescaleSlope,
+      rescaleIntercept
+    );
     const [min, max] = model.dataRange;
 
     const maxNumberOfWorkers = 4;
@@ -534,6 +542,8 @@ function vtkPiecewiseGaussianWidget(publicAPI, model) {
             min,
             max,
             numberOfBins: model.numberOfBins,
+            rescaleSlope,
+            rescaleIntercept,
           },
           [subArray.buffer]
         )

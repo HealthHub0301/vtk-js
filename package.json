@@ -1,6 +1,6 @@
 {
   "name": "vtk.js",
-  "version": "0.0.0-semantically-release",
+  "version": "29.1.1-dl",
   "description": "Visualization Toolkit for the Web",
   "keywords": [
     "3d",
@@ -18,6 +18,9 @@
     "graphics",
     "paraviewweb"
   ],
+  "publishConfig": {
+    "registry": "https://repo.healthhub.kr/repository/npm-private/"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/Kitware/vtk-js.git"
@@ -170,6 +173,10 @@
       "path": "cz-conventional-changelog"
     }
   },
+  "size-limit": {
+    "path": "./Sources/index.js",
+    "limit": "200 KB"
+  },
   "bin": {
     "vtkDataConverter": "./Utilities/DataGenerator/convert-cli.js",
     "xml2json": "./Utilities/XMLConverter/xml2json-cli.js"
@@ -226,8 +233,5 @@
       ],
       "@semantic-release/github"
     ]
-  },
-  "publishConfig": {
-    "access": "public"
   }
 }
