@@ -750,17 +750,17 @@ function vtkOpenGLImageMapper(publicAPI, model) {
       cellBO.getProgram().setUniformf('ciwidth', cprPoints.length);
       cellBO.getProgram().setUniformf('ciheight', cprImageWidth);
       cellBO.getProgram().setUniformf('cprThickness', cprThickness);
-
-      cellBO
-        .getProgram()
-        .setUniformi('cvtexture', model.cprVelocityTexture.getTextureUnit());
-      cellBO
-        .getProgram()
-        .setUniformi('crtexture', model.cprRayTexture.getTextureUnit());
-      cellBO
-        .getProgram()
-        .setUniformi('citexture', model.cprImageTexture.getTextureUnit());
     }
+
+    cellBO
+      .getProgram()
+      .setUniformi('cvtexture', model.cprVelocityTexture.getTextureUnit());
+    cellBO
+      .getProgram()
+      .setUniformi('crtexture', model.cprRayTexture.getTextureUnit());
+    cellBO
+      .getProgram()
+      .setUniformi('citexture', model.cprImageTexture.getTextureUnit());
 
     const numComp = model.openGLTexture.getComponents();
     const iComps = actor.getProperty().getIndependentComponents();
@@ -1046,7 +1046,7 @@ function vtkOpenGLImageMapper(publicAPI, model) {
     const cprPoints = model.renderable.getCprPoints();
     const cprPositionMap = model.renderable.getCprPositionMap();
     const cprImageWidth = model.renderable.getCprImageWidth();
-    const width = cprPoints?.length ?? 0;
+    const width = cprPoints?.length ?? 1;
     const isCprThickness =
       model.renderable.getCprThicknessMode() && width && cprPositionMap;
 
