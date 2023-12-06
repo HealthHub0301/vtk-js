@@ -272,10 +272,8 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
         'vec4 depthVec = texture2D(zBufferTexture, vec2(gl_FragCoord.x / vpZWidth, gl_FragCoord.y/vpZHeight));',
         'float zdepth = (depthVec.r*256.0 + depthVec.g)/257.0;',
         'zdepth = zdepth * 2.0 - 1.0;',
-        'if (cameraParallel == 0) {',
-        'zdepth = -2.0 * camFar * camNear / (zdepth*(camFar-camNear)-(camFar+camNear)) - camNear;}',
-        'else {',
-        'zdepth = (zdepth + 1.0) * 0.5 * (camFar - camNear);}\n',
+        // FIXME: pick mode일 때만 zdepth를 적용시키고 싶음
+        'zdepth = -2.0 * camFar * camNear / (zdepth*(camFar-camNear)-(camFar+camNear)) - camNear;',
         'zdepth = -zdepth/rayDir.z;',
         'dists.y = min(zdepth,dists.y);',
       ]).result;
