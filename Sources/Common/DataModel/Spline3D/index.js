@@ -74,6 +74,12 @@ function vtkSpline3D(publicAPI, model) {
     model.splineZ.getValue(intervalIndex, t),
   ];
 
+  publicAPI.getVelocity = (intervalIndex, t) => [
+    model.splineX.getVelocity(intervalIndex, t),
+    model.splineY.getVelocity(intervalIndex, t),
+    model.splineZ.getVelocity(intervalIndex, t),
+  ];
+
   // --------------------------------------------------------------------------
   // initialization
   // --------------------------------------------------------------------------
