@@ -179,12 +179,9 @@ function vtkOpenGLImageMapper(publicAPI, model) {
       'uniform sampler2D cvtexture;',
       'uniform sampler2D crtexture;',
       'uniform sampler2D citexture;',
-      'uniform vec2 canvasSize;',
       'uniform float cprThickness;',
       'uniform float ciwidth;',
       'uniform float ciheight;',
-      'uniform float cprScale;',
-      'uniform vec2 cprCenter;',
       'uniform vec3 vVCToIJKSpacing;',
       'uniform sampler2D colorTexture1;',
       'uniform sampler2D pwfTexture1;',
@@ -345,32 +342,18 @@ function vtkOpenGLImageMapper(publicAPI, model) {
               [
                 `
                 vec2 st = tcoordVCVSOutput.xy;
-
-                float cprWidth = ciwidth * cprScale;
-                float cprHeight = ciheight * cprScale;
-            
-                //1pixel 당 1mm로 이미지 크기 고정
-                float sideX = (1.0 - cprWidth  / canvasSize.x) * 0.5;
-                float sideY = (1.0 - cprHeight / canvasSize.y) * 0.5;
-            
-                if (cprWidth < canvasSize.x) {
-                  if (st.x < sideX || st.x > 1.0 - sideX) {
+                if (ciwidth > ciheight) {
+                  st.y = (st.y - 0.5 + ciheight / ciwidth * 0.5) * ciwidth / ciheight;
+                  if (st.y < 0.0 || st.y > 1.0) {
                     gl_FragData[0] = vec4(0.0, 0.0, 0.0, 1.0);
                     return;
                   }
-                  st.x = (st.x - sideX) * canvasSize.x / cprWidth;
                 } else {
-                  st.x = st.x * canvasSize.x / cprWidth + (1.0 - canvasSize.x / cprWidth) * 0.5;
-                }
-            
-                if (cprHeight < canvasSize.y) {
-                  if (st.y < sideY || st.y > 1.0 - sideY) {
+                  st.x = (st.x - 0.5 + ciwidth / ciheight * 0.5) * ciheight / ciwidth;
+                  if (st.x < 0.0 || st.x > 1.0) {
                     gl_FragData[0] = vec4(0.0, 0.0, 0.0, 1.0);
                     return;
                   }
-                  st.y = (st.y - sideY) * canvasSize.y / cprHeight;
-                } else {
-                  st.y = st.y * canvasSize.y / cprHeight + (1.0 - canvasSize.y / cprHeight) * 0.5;
                 }
                 `,
                 'vec4 vel = texture2D(cvtexture, vec2(st.x, 0.5));',
@@ -734,15 +717,6 @@ function vtkOpenGLImageMapper(publicAPI, model) {
       model.renderable.getCprThicknessMode() &&
       model.renderable.getCprPoints()?.length
     ) {
-      const canvasSize = model._openGLRenderWindow.getSize();
-      cellBO
-        .getProgram()
-        .setUniform2f('canvasSize', canvasSize[0], canvasSize[1]);
-      cellBO
-        .getProgram()
-        .setUniformf('cprScale', model.renderable.getCprScale());
-      const cprCenter = model.renderable.getCprCenter();
-      cellBO.getProgram().setUniform2f('cprCenter', cprCenter[0], cprCenter[1]);
       const cprPoints = model.renderable.getCprPoints();
       const cprThickness = model.renderable.getCprThickness();
       const cprImageWidth = model.renderable.getCprImageWidth();

@@ -298,8 +298,6 @@ const DEFAULT_VALUES = {
   CprPoints: null,
   CprImageWidth: 0,
   CprPositionMap: null,
-  CprCenter: [0, 0],
-  CprScale: 1,
   originalData: null,
   slice: 0,
   // <--------------------->
@@ -334,8 +332,6 @@ export function extend(publicAPI, model, initialValues = {}) {
     'CprPoints',
     'CprImageWidth',
     'CprPositionMap',
-    'CprCenter',
-    'CprScale',
     'originalData',
     'RescaleSlope',
     'RescaleIntercept',
