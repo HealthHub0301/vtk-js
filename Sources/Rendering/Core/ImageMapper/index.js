@@ -293,7 +293,7 @@ const DEFAULT_VALUES = {
   MprThickness: 10,
   MprSlicingMode: 2,
   MprMode: 0,
-  CprThicknessMode: false,
+  CprMode: false,
   CprThickness: 10,
   CprPoints: null,
   CprImageWidth: 0,
@@ -327,7 +327,7 @@ export function extend(publicAPI, model, initialValues = {}) {
     'MprSlicingMode',
     'MprMode',
     // <--CPR 관련 파라미터 추가-->
-    'CprThicknessMode',
+    'CprMode',
     'CprThickness',
     'CprPoints',
     'CprImageWidth',

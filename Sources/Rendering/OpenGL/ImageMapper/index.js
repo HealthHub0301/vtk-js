@@ -333,7 +333,7 @@ function vtkOpenGLImageMapper(publicAPI, model) {
             ).result;
           }
           if (
-            model.renderable.getCprThicknessMode() &&
+            model.renderable.getCprMode() &&
             model.renderable.getCprPoints()?.length
           ) {
             FSSource = vtkShaderProgram.substitute(
@@ -714,7 +714,7 @@ function vtkOpenGLImageMapper(publicAPI, model) {
     }
     // <--------------------->
     if (
-      model.renderable.getCprThicknessMode() &&
+      model.renderable.getCprMode() &&
       model.renderable.getCprPoints()?.length
     ) {
       const cprPoints = model.renderable.getCprPoints();
@@ -1022,7 +1022,7 @@ function vtkOpenGLImageMapper(publicAPI, model) {
     const cprImageWidth = model.renderable.getCprImageWidth();
     const width = cprPoints?.length ?? 1;
     const isCprThickness =
-      model.renderable.getCprThicknessMode() && width && cprPositionMap;
+      model.renderable.getCprMode() && width && cprPositionMap;
 
     const cvTable = new Float32Array(width * 3);
     const crTable = new Float32Array(width * 3);
@@ -1318,8 +1318,7 @@ function vtkOpenGLImageMapper(publicAPI, model) {
       ];
 
       if (
-        (model.renderable.getMprMode() ||
-          model.renderable.getCprThicknessMode()) &&
+        (model.renderable.getMprMode() || model.renderable.getCprMode()) &&
         volScalars
       ) {
         // <--텍스처에 저장할 볼륨 데이터-->
