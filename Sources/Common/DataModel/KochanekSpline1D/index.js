@@ -254,8 +254,7 @@ function vtkKochanekSpline1D(publicAPI, model) {
     return (
       model.coefficients[4 * intervalIndex + 3] * t3 +
       model.coefficients[4 * intervalIndex + 2] * t2 +
-      model.coefficients[4 * intervalIndex + 1] * t +
-      model.coefficients[4 * intervalIndex + 0]
+      model.coefficients[4 * intervalIndex + 1]
     );
   };
 }
