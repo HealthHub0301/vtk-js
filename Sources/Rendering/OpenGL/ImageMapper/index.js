@@ -66,7 +66,7 @@ function vtkOpenGLImageMapper(publicAPI, model) {
       // CPR 관련 texture
       model.cprVelocityTexture.setOpenGLRenderWindow(model._openGLRenderWindow);
       model.cprRayTexture.setOpenGLRenderWindow(model._openGLRenderWindow);
-      model.cprImageTexture.setOpenGLRenderWindow(model._openGLRenderWindow);
+      model.cprPositionTexture.setOpenGLRenderWindow(model._openGLRenderWindow);
 
       model.colorTexture.setOpenGLRenderWindow(model._openGLRenderWindow);
       model.pwfTexture.setOpenGLRenderWindow(model._openGLRenderWindow);
@@ -178,7 +178,7 @@ function vtkOpenGLImageMapper(publicAPI, model) {
       // <--------------------->
       'uniform sampler2D cvtexture;',
       'uniform sampler2D crtexture;',
-      'uniform sampler2D citexture;',
+      'uniform sampler2D cptexture;',
       'uniform float cprThickness;',
       'uniform float ciwidth;',
       'uniform float ciheight;',
@@ -332,10 +332,7 @@ function vtkOpenGLImageMapper(publicAPI, model) {
               ]
             ).result;
           }
-          if (
-            model.renderable.getCprMode() &&
-            model.renderable.getCprPoints()?.length
-          ) {
+          if (model.renderable.getCprMode()) {
             FSSource = vtkShaderProgram.substitute(
               FSSource,
               '//VTK::TCoord::Impl',
@@ -358,7 +355,9 @@ function vtkOpenGLImageMapper(publicAPI, model) {
                 `,
                 'vec4 vel = texture2D(cvtexture, vec2(st.x, 0.5));',
                 'vec4 ray = texture2D(crtexture, vec2(st.x, 0.5));',
-                'vec4 img = texture2D(citexture, vec2(st.x, st.y));',
+                'vec4 position = texture2D(cptexture, vec2(st.x, 0.5));',
+
+                'vec4 img = position + ray * (st.y - 0.5) * ciheight;',
 
                 // spline의 가속도와 cpr 진행 방향을 cross 하여 thickness의 진행방향을 얻습니다.
                 'vec3 tRay = cross(ray.xyz, vel.xyz);',
@@ -713,15 +712,12 @@ function vtkOpenGLImageMapper(publicAPI, model) {
       }
     }
     // <--------------------->
-    if (
-      model.renderable.getCprMode() &&
-      model.renderable.getCprPoints()?.length
-    ) {
-      const cprPoints = model.renderable.getCprPoints();
+    if (model.renderable.getCprMode()) {
+      const cprPosition = model.renderable.getCprPosition();
       const cprThickness = model.renderable.getCprThickness();
       const cprImageWidth = model.renderable.getCprImageWidth();
 
-      cellBO.getProgram().setUniformf('ciwidth', cprPoints.length);
+      cellBO.getProgram().setUniformf('ciwidth', cprPosition.length);
       cellBO.getProgram().setUniformf('ciheight', cprImageWidth);
       cellBO.getProgram().setUniformf('cprThickness', cprThickness);
     }
@@ -734,7 +730,7 @@ function vtkOpenGLImageMapper(publicAPI, model) {
       .setUniformi('crtexture', model.cprRayTexture.getTextureUnit());
     cellBO
       .getProgram()
-      .setUniformi('citexture', model.cprImageTexture.getTextureUnit());
+      .setUniformi('cptexture', model.cprPositionTexture.getTextureUnit());
 
     const numComp = model.openGLTexture.getComponents();
     const iComps = actor.getProperty().getIndependentComponents();
@@ -915,7 +911,7 @@ function vtkOpenGLImageMapper(publicAPI, model) {
     // CPR 관련 texture
     model.cprVelocityTexture.activate();
     model.cprRayTexture.activate();
-    model.cprImageTexture.activate();
+    model.cprPositionTexture.activate();
 
     model.colorTexture.activate();
     model.pwfTexture.activate();
@@ -935,7 +931,7 @@ function vtkOpenGLImageMapper(publicAPI, model) {
 
     model.cprVelocityTexture.deactivate();
     model.cprRayTexture.deactivate();
-    model.cprImageTexture.deactivate();
+    model.cprPositionTexture.deactivate();
 
     model.colorTexture.deactivate();
     model.pwfTexture.deactivate();
@@ -1017,30 +1013,22 @@ function vtkOpenGLImageMapper(publicAPI, model) {
     model.volumeTexture.setMinificationFilter(Filter.LINEAR);
     model.volumeTexture.setMagnificationFilter(Filter.LINEAR);
 
-    const cprPoints = model.renderable.getCprPoints();
-    const cprPositionMap = model.renderable.getCprPositionMap();
-    const cprImageWidth = model.renderable.getCprImageWidth();
-    const width = cprPoints?.length ?? 1;
-    const isCprThickness =
-      model.renderable.getCprMode() && width && cprPositionMap;
+    const cprPosition = model.renderable.getCprPosition();
+    const cprRay = model.renderable.getCprRay();
+    const cprVelocity = model.renderable.getCprVelocity();
+    const width = cprPosition?.length ?? 1;
 
-    const cvTable = new Float32Array(width * 3);
-    const crTable = new Float32Array(width * 3);
-    let ciTable = new Float32Array(width * 3);
-
-    if (isCprThickness) {
-      let idx = 0;
-      for (let i = 0; i < width; ++i) {
-        cvTable[idx + 0] = cprPoints[i].velocity[0];
-        cvTable[idx + 1] = cprPoints[i].velocity[1];
-        cvTable[idx + 2] = cprPoints[i].velocity[2];
-
-        crTable[idx + 0] = cprPoints[i].rayDir[0];
-        crTable[idx + 1] = cprPoints[i].rayDir[1];
-        crTable[idx + 2] = cprPoints[i].rayDir[2];
-        idx += 3;
-      }
-      ciTable = cprPositionMap;
+    let cvTable;
+    let crTable;
+    let cpTable;
+    if (model.renderable.getCprMode()) {
+      cvTable = new Float32Array(cprVelocity.flat());
+      crTable = new Float32Array(cprRay.flat());
+      cpTable = new Float32Array(cprPosition.flat());
+    } else {
+      cvTable = new Float32Array(width * 3);
+      crTable = new Float32Array(width * 3);
+      cpTable = new Float32Array(width * 3);
     }
 
     model.cprVelocityTexture.releaseGraphicsResources(
@@ -1053,9 +1041,12 @@ function vtkOpenGLImageMapper(publicAPI, model) {
     model.cprRayTexture.setMinificationFilter(Filter.LINEAR);
     model.cprRayTexture.setMagnificationFilter(Filter.LINEAR);
 
-    model.cprImageTexture.releaseGraphicsResources(model._openGLRenderWindow);
-    model.cprImageTexture.setMinificationFilter(Filter.LINEAR);
-    model.cprImageTexture.setMagnificationFilter(Filter.LINEAR);
+    model.cprPositionTexture.releaseGraphicsResources(
+      model._openGLRenderWindow
+    );
+    model.cprPositionTexture.setMinificationFilter(Filter.LINEAR);
+    model.cprPositionTexture.setMagnificationFilter(Filter.LINEAR);
+
     model.cprVelocityTexture.create2DFromRaw(
       width,
       1,
@@ -1070,24 +1061,13 @@ function vtkOpenGLImageMapper(publicAPI, model) {
       VtkDataTypes.FLOAT,
       crTable
     );
-
-    if (isCprThickness) {
-      model.cprImageTexture.create2DFromRaw(
-        width,
-        cprImageWidth,
-        3,
-        VtkDataTypes.FLOAT,
-        ciTable
-      );
-    } else {
-      model.cprImageTexture.create2DFromRaw(
-        width,
-        1,
-        3,
-        VtkDataTypes.FLOAT,
-        ciTable
-      );
-    }
+    model.cprPositionTexture.create2DFromRaw(
+      width,
+      1,
+      3,
+      VtkDataTypes.FLOAT,
+      cpTable
+    );
 
     // <--------------------->
     const iComps = actorProperty.getIndependentComponents();
@@ -1579,7 +1559,7 @@ const DEFAULT_VALUES = {
   volumeTextureString: null,
   cprVelocityTexture: null,
   cprRayTexture: null,
-  cprImageTexture: null,
+  cprPositionTexture: null,
   // <--------------------->
   tris: null,
   imagemat: null,
@@ -1617,7 +1597,7 @@ export function extend(publicAPI, model, initialValues = {}) {
   // <--------------------->
   model.cprVelocityTexture = vtkOpenGLTexture.newInstance();
   model.cprRayTexture = vtkOpenGLTexture.newInstance();
-  model.cprImageTexture = vtkOpenGLTexture.newInstance();
+  model.cprPositionTexture = vtkOpenGLTexture.newInstance();
   model.colorTexture = vtkOpenGLTexture.newInstance();
   model.pwfTexture = vtkOpenGLTexture.newInstance();
 
