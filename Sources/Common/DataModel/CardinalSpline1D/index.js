@@ -270,6 +270,17 @@ function vtkCardinalSpline1D(publicAPI, model) {
       model.coefficients[4 * intervalIndex + 0]
     );
   };
+
+  publicAPI.getVelocity = (intervalIndex, t) => {
+    const t2 = 2 * t;
+    const t3 = 3 * t * t;
+
+    return (
+      model.coefficients[4 * intervalIndex + 3] * t3 +
+      model.coefficients[4 * intervalIndex + 2] * t2 +
+      model.coefficients[4 * intervalIndex + 1]
+    );
+  };
 }
 
 // ----------------------------------------------------------------------------
