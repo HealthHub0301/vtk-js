@@ -1,9 +1,7 @@
-/* eslint-disable */
 import macro from 'vtk.js/Sources/macros';
 import vtkInteractorStyleTrackballCamera from 'vtk.js/Sources/Interaction/Style/InteractorStyleTrackballCamera';
 import * as vtkMath from 'vtk.js/Sources/Common/Core/Math';
 import { States } from 'vtk.js/Sources/Rendering/Core/InteractorStyle/Constants';
-import { State } from '../../Widgets/LineRepresentation/Constants';
 
 // ----------------------------------------------------------------------------
 // vtkInteractorHHStyleImage methods
@@ -85,7 +83,7 @@ function vtkInteractorHHStyleImage(publicAPI, model) {
         publicAPI.endSlice();
         break;
 
-      case State.IS_DOLLY:
+      case States.IS_DOLLY:
         publicAPI.endDolly();
         break;
 
@@ -361,7 +359,10 @@ export function extend(publicAPI, model, initialValues = {}) {
 
 // ----------------------------------------------------------------------------
 
-export const newInstance = macro.newInstance(extend, 'vtkInteractorHHStyleImage');
+export const newInstance = macro.newInstance(
+  extend,
+  'vtkInteractorHHStyleImage'
+);
 
 // ----------------------------------------------------------------------------
 
