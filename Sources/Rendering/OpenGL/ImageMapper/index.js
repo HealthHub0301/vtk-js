@@ -373,7 +373,19 @@ function vtkOpenGLImageMapper(publicAPI, model) {
 
                 'vec3 sampleStep = tRay.xyz * cprThickness / float(thickness);',
                 'vec3 start = img.xyz + -tRay.xyz * cprThickness * 0.5;',
-
+                // 이미지 밖의 점은 까만색으로 처리
+                `if (start.x < 0.0 || start.x > 1.0) {
+                  gl_FragData[0] = vec4(0.0, 0.0, 0.0, 1.0);
+                  return;
+                }`,
+                `if (start.y < 0.0 || start.y > 1.0) {
+                  gl_FragData[0] = vec4(0.0, 0.0, 0.0, 1.0);
+                  return;
+                }`,
+                `if (start.z < 0.0 || start.z > 1.0) {
+                  gl_FragData[0] = vec4(0.0, 0.0, 0.0, 1.0);
+                  return;
+                }`,
                 'float intensity = 0.0;',
                 'for (int i = 0; i < thickness + 1; ++i) {',
                 '  intensity += texture(texture2, start + float(i) * sampleStep).r;',
