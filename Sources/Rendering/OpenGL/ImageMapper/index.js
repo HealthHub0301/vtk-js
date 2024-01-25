@@ -373,12 +373,28 @@ function vtkOpenGLImageMapper(publicAPI, model) {
 
                 'vec3 sampleStep = tRay.xyz * cprThickness / float(thickness);',
                 'vec3 start = img.xyz + -tRay.xyz * cprThickness * 0.5;',
-
                 'float intensity = 0.0;',
+                'int count = 0;',
                 'for (int i = 0; i < thickness + 1; ++i) {',
-                '  intensity += texture(texture2, start + float(i) * sampleStep).r;',
+                '  vec3 step = start + float(i) * sampleStep;',
+                // 이미지 밖의 점은 까만색으로 처리
+                `  if (step.x < 0.0 || step.x > 1.0) {
+                     continue;
+                   }
+                   if (step.y < 0.0 || step.y > 1.0) {
+                     continue;
+                   }
+                   if (step.z < 0.0 || step.z > 1.0) {
+                     continue;
+                   }`,
+                '  count = count + 1;',
+                '  intensity += texture(texture2, step).r;',
                 '}',
-                'float avg = intensity / (float(thickness) + 1.0);',
+                `if (count == 0) {
+                  gl_FragData[0] = vec4(0.0, 0.0, 0.0, 1.0);
+                  return;
+                }`,
+                'float avg = intensity / (float(count) + 1.0);',
 
                 'vec3 tcolor = texture2D(colorTexture1, vec2(avg * cscale0 + cshift0, 0.5)).rgb;',
                 'float scalarOpacity = texture2D(pwfTexture1, vec2(avg * pwfscale0 + pwfshift0, 0.5)).r;',
