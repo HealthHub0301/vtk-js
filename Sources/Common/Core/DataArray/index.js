@@ -2,6 +2,8 @@ import Constants from 'vtk.js/Sources/Common/Core/DataArray/Constants';
 import * as macro from 'vtk.js/Sources/macros';
 import * as vtkMath from 'vtk.js/Sources/Common/Core/Math';
 
+import wasm from './wasm';
+
 const { vtkErrorMacro } = macro;
 const { DefaultDataType } = Constants;
 
@@ -257,7 +259,7 @@ function vtkDataArray(publicAPI, model) {
     }
 
     // Need to compute ranges...
-    range = computeRange(
+    range = wasm.computeRange2(
       publicAPI.getData(),
       componentIndex,
       model.numberOfComponents

@@ -81,6 +81,21 @@ function configureVtkRules() {
       test: /\.worker\.js$/,
       use: [{ loader: 'worker-loader', options: { inline: 'no-fallback' } }],
     },
+    // ===== vtkJsWasmUtil.wasm =====
+    {
+      test: /vtkJsWasmUtil(\.simd)?\.js$/,
+      loader: `exports-loader`,
+      options: {
+        type: `module`,
+        exports: `vtkJsWasmUtil`,
+      },
+    },
+    {
+      test: /vtkJsWasmUtil(\.simd)?\.wasm$/,
+      type: `javascript/auto`,
+      loader: `file-loader`,
+    },
+    // ===== vtkJsWasmUtil.wasm =====
   ];
 }
 
@@ -157,6 +172,11 @@ const baseConfig = {
       alwaysNotify: true,
     }),
   ].filter(Boolean),
+  experiments: {
+    asyncWebAssembly: true,
+    syncWebAssembly: true,
+    topLevelAwait: true,
+  },
 };
 
 // vtk-lite.js
