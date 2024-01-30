@@ -394,7 +394,7 @@ function vtkOpenGLImageMapper(publicAPI, model) {
                   gl_FragData[0] = vec4(0.0, 0.0, 0.0, 1.0);
                   return;
                 }`,
-                'float avg = intensity / (float(count) + 1.0);',
+                'float avg = intensity / (float(thickness) + 1.0);',
 
                 'vec3 tcolor = texture2D(colorTexture1, vec2(avg * cscale0 + cshift0, 0.5)).rgb;',
                 'float scalarOpacity = texture2D(pwfTexture1, vec2(avg * pwfscale0 + pwfshift0, 0.5)).r;',
