@@ -211,6 +211,16 @@ function vtkInteractorHHStyleImage(publicAPI, model) {
   };
 
   //----------------------------------------------------------------------------
+  publicAPI.handleKeyPress = (callData) => {
+    switch (callData.key) {
+      case 'r':
+      case 'R':
+      default:
+        break;
+    }
+  };
+
+  //----------------------------------------------------------------------------
   publicAPI.handleMouseDolly = (renderer, position) => {
     const dy = position.y - model.previousPosition.y;
     const rwi = model._interactor;
