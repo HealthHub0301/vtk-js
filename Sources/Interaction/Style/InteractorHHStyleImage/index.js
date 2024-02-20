@@ -99,7 +99,11 @@ function vtkInteractorHHStyleImage(publicAPI, model) {
     const pos = callData.position;
     model.previousPosition = pos;
 
-    publicAPI.startDolly();
+    if (!callData.shiftKey) {
+      publicAPI.startDolly();
+    } else {
+      publicAPI.startPan();
+    }
   };
 
   //--------------------------------------------------------------------------
