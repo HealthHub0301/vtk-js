@@ -71,7 +71,6 @@ function vtkInteractorHHStyleImage(publicAPI, model) {
   };
 
   //--------------------------------------------------------------------------
-  publicAPI.superHandleRightButtonRelease = publicAPI.handleRightButtonRelease;
   publicAPI.handleRightButtonRelease = () => {
     switch (model.state) {
       case States.IS_WINDOW_LEVEL:
@@ -87,7 +86,7 @@ function vtkInteractorHHStyleImage(publicAPI, model) {
         break;
 
       default:
-        publicAPI.superHandleRightButtonRelease();
+        // publicAPI.superHandleRightButtonRelease();
         break;
     }
   };
