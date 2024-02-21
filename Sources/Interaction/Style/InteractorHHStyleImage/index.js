@@ -40,7 +40,6 @@ function vtkInteractorHHStyleImage(publicAPI, model) {
   };
 
   //----------------------------------------------------------------------------
-  publicAPI.superHandleRightButtonPress = publicAPI.handleRightButtonPress;
   publicAPI.handleRightButtonPress = (callData) => {
     const pos = callData.position;
 
@@ -67,12 +66,11 @@ function vtkInteractorHHStyleImage(publicAPI, model) {
       publicAPI.startSlice();
     } else {
       // The rest of the button + key combinations remain the same
-      publicAPI.superHandleRightButtonPress(callData);
+      // publicAPI.superHandleRightButtonPress(callData);
     }
   };
 
   //--------------------------------------------------------------------------
-  publicAPI.superHandleRightButtonRelease = publicAPI.handleRightButtonRelease;
   publicAPI.handleRightButtonRelease = () => {
     switch (model.state) {
       case States.IS_WINDOW_LEVEL:
@@ -88,7 +86,7 @@ function vtkInteractorHHStyleImage(publicAPI, model) {
         break;
 
       default:
-        publicAPI.superHandleRightButtonRelease();
+        // publicAPI.superHandleRightButtonRelease();
         break;
     }
   };
@@ -99,7 +97,11 @@ function vtkInteractorHHStyleImage(publicAPI, model) {
     const pos = callData.position;
     model.previousPosition = pos;
 
-    publicAPI.startDolly();
+    if (!callData.shiftKey) {
+      publicAPI.startDolly();
+    } else {
+      publicAPI.startPan();
+    }
   };
 
   //--------------------------------------------------------------------------
