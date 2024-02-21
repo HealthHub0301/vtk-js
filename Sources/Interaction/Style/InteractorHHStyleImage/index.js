@@ -40,7 +40,6 @@ function vtkInteractorHHStyleImage(publicAPI, model) {
   };
 
   //----------------------------------------------------------------------------
-  publicAPI.superHandleRightButtonPress = publicAPI.handleRightButtonPress;
   publicAPI.handleRightButtonPress = (callData) => {
     const pos = callData.position;
 
@@ -67,7 +66,7 @@ function vtkInteractorHHStyleImage(publicAPI, model) {
       publicAPI.startSlice();
     } else {
       // The rest of the button + key combinations remain the same
-      publicAPI.superHandleRightButtonPress(callData);
+      // publicAPI.superHandleRightButtonPress(callData);
     }
   };
 
