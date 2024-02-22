@@ -317,6 +317,8 @@ function vtkImageReslice(publicAPI, model) {
     const outputStencil = null;
 
     //console.log("outext : " + outExt);
+    model.mprCoordTexture = new Uint16Array((outExt[1]+1)*(outExt[3]+1)*3);
+    model.mprCoordTexture.fill(50000);
     // multiple samples for thick slabs
     const nsamples = Math.max(model.slabNumberOfSlices, 1);
 
@@ -360,7 +362,8 @@ function vtkImageReslice(publicAPI, model) {
       borderMode === ImageBorderMode.CLAMP &&
       !(
         optimizedTransform != null ||
-        perspective ||
+        // FIXME: 양쪽 브랜치 다 MPR position을 계산하도록 수정
+        // perspective ||
         convertScalars != null ||
         rescaleScalars
       ) &&
@@ -481,12 +484,6 @@ function vtkImageReslice(publicAPI, model) {
           inPoint1[2] = inPoint0[2] + idY * yAxis[2];
           inPoint1[3] = inPoint0[3] + idY * yAxis[3];
         }
-        model.inpoint = inPoint1;
-
-        if (model.isMPRCustom) {
-          return;
-        }
-
         // march through one row of the output image
         const idXmin = outIndex[0];
         const idXmax = idXmin + span - 1;
@@ -684,6 +681,10 @@ function vtkImageReslice(publicAPI, model) {
 
               // perform nearest-neighbor interpolation via pixel copy
               let offset = inIdX * inIncX + inIdY * inIncY + inIdZ * inIncZ;
+
+              model.mprCoordTexture[outPtrIndex * 3] = inIdX;
+              model.mprCoordTexture[outPtrIndex * 3 + 1] = inIdY;
+              model.mprCoordTexture[outPtrIndex * 3 + 2] = inIdZ;
 
               // when memcpy is used with a constant size, the compiler will
               // optimize away the function call and use the minimum number
@@ -1102,8 +1103,7 @@ const DEFAULT_VALUES = {
   // resliceTransform: null,
   interpolator: vtkImageInterpolator.newInstance(),
   usePermuteExecute: false, // no supported yet
-  inpoint: null,
-  isMPRCustom: false,
+  mprCoordTexture: null,
 };
 
 // ----------------------------------------------------------------------------
@@ -1133,8 +1133,7 @@ export function extend(publicAPI, model, initialValues = {}) {
     'slabTrapezoidIntegration',
     'slabNumberOfSlices',
     'slabSliceSpacingFraction',
-    'inpoint',
-    'isMPRCustom',
+    'mprCoordTexture',
   ]);
 
   macro.setGetArray(publicAPI, model, ['outputOrigin', 'outputSpacing'], 3);
