@@ -1637,7 +1637,9 @@ export function extend(publicAPI, model, initialValues = {}) {
   model.tris = vtkHelper.newInstance();
   model.openGLTexture = vtkOpenGLTexture.newInstance();
   // <--볼륨 데이터, 픽셀의 좌표 데이터를 저장할 텍스처 세팅-->
-  model.MPRTexture = vtkOpenGLTexture.newInstance();
+  model.MPRTexture = vtkOpenGLTexture.newInstance({
+    resizable: true,
+  });
   model.volumeTexture = vtkOpenGLTexture.newInstance();
   // <--------------------->
   model.cprVelocityTexture = vtkOpenGLTexture.newInstance();
