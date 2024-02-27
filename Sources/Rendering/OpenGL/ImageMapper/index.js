@@ -61,6 +61,7 @@ function vtkOpenGLImageMapper(publicAPI, model) {
       model.openGLTexture.setOpenGLRenderWindow(model._openGLRenderWindow);
       // <--볼륨 데이터, 픽셀의 좌표 데이터를 저장할 텍스처 세팅-->
       model.volumeTexture.setOpenGLRenderWindow(model._openGLRenderWindow);
+      model.MPRTexture.setOpenGLRenderWindow(model._openGLRenderWindow);
       // <--------------------->
 
       // CPR 관련 texture
@@ -166,9 +167,9 @@ function vtkOpenGLImageMapper(publicAPI, model) {
       'uniform float pwfscale0;',
       'uniform sampler2D texture1;',
       // <--MPR 관련 파라미터 추가-->
+      'uniform sampler2D mprPos;',
       'uniform highp sampler3D texture2;',
       'uniform float mprSlicingMode;',
-      'uniform vec3 mprPoint;',
       'uniform float mprDirX;',
       'uniform float mprDirY;',
       'uniform float mprDirZ;',
@@ -296,7 +297,7 @@ function vtkOpenGLImageMapper(publicAPI, model) {
       switch (tNumComp) {
         case 1:
           // <--MPR 기능을 사용할 때 렌더링 셰이더 계산-->
-          // 픽셀마다 3D 공간 내의 좌표 데이터(mpr_start)를 mprPoint 값에서 계산하고
+          // 픽셀마다 3D 공간 내의 좌표 데이터(mpr_start)를 mprPos 값에서 계산하고
           // cross line의 각도, volueme data(texture2) 값으로 vothickness 계산을 수행한다.
           if (model.renderable.getMprMode()) {
             FSSource = vtkShaderProgram.substitute(
@@ -305,14 +306,7 @@ function vtkOpenGLImageMapper(publicAPI, model) {
               [
                 'float intensity = 0.0;',
                 'vec3 mprDir = normalize(vec3(mprDirX, mprDirY, mprDirZ));',
-                'vec3 mpr_start;',
-                'if (mprSlicingMode == 2.0) {',
-                '  mpr_start = vec3(tcoordVCVSOutput[0] * vsize[0], vsize[1] * (1.0 - tcoordVCVSOutput[1]) - 1.0, mprPoint[2]);',
-                '} else if (mprSlicingMode == 1.0) {',
-                '  mpr_start = vec3(tcoordVCVSOutput[0] * vsize[0], mprPoint[1], vsize[2] * tcoordVCVSOutput[1]);',
-                '} else {',
-                '  mpr_start = vec3(mprPoint[0], tcoordVCVSOutput[0] * vsize[1], tcoordVCVSOutput[1] * vsize[2]);',
-                '}',
+                'vec3 mpr_start = texture2D(mprPos, tcoordVCVSOutput).rgb;',
 
                 'vec3 mpr = vec3(0,0,0);',
 
@@ -700,6 +694,9 @@ function vtkOpenGLImageMapper(publicAPI, model) {
     // <--------------------->
     // <--GPU MPR을 사용할 때 픽셀의 좌표 데이터와 cross line 데이터를 셰이더에 전송-->
     if (model.renderable.getMprMode()) {
+      cellBO
+        .getProgram()
+        .setUniformi('mprPos', model.MPRTexture.getTextureUnit());
       const ijkMode = model.renderable.getMprSlicingMode();
       const mprDir = model.renderable
         .getInputConnection()
@@ -707,10 +704,6 @@ function vtkOpenGLImageMapper(publicAPI, model) {
       cellBO
         .getProgram()
         .setUniformf('mprSlicingMode', model.renderable.getMprSlicingMode());
-      const inpoint = model.renderable.getInputConnection().filter.getInpoint();
-      cellBO
-        .getProgram()
-        .setUniform3f('mprPoint', inpoint[0], inpoint[1], inpoint[2]);
       if (ijkMode == SlicingMode.I) {
         cellBO.getProgram().setUniformf('mprDirX', mprDir[8]);
         cellBO.getProgram().setUniformf('mprDirY', mprDir[9]);
@@ -922,6 +915,7 @@ function vtkOpenGLImageMapper(publicAPI, model) {
     model.openGLTexture.activate();
     // <--볼륨 데이터, 픽셀의 좌표 데이터를 저장할 텍스처 세팅-->
     model.volumeTexture.activate();
+    model.MPRTexture.activate();
     // <--------------------->
 
     // CPR 관련 texture
@@ -943,6 +937,7 @@ function vtkOpenGLImageMapper(publicAPI, model) {
     model.openGLTexture.deactivate();
     // <--볼륨 데이터, 픽셀의 좌표 데이터를 저장할 텍스처 세팅-->
     model.volumeTexture.deactivate();
+    model.MPRTexture.deactivate();
     // <--------------------->
 
     model.cprVelocityTexture.deactivate();
@@ -1025,6 +1020,11 @@ function vtkOpenGLImageMapper(publicAPI, model) {
     const actorProperty = actor.getProperty();
 
     const iType = actorProperty.getInterpolationType();
+    model.MPRTexture.setMinificationFilter(Filter.LINEAR);
+    model.MPRTexture.setMagnificationFilter(Filter.LINEAR);
+
+    model.MPRTexture.setWrapS(Wrap.CLAMP_TO_EDGE);
+    model.MPRTexture.setWrapT(Wrap.CLAMP_TO_EDGE);
 
     model.volumeTexture.setMinificationFilter(Filter.LINEAR);
     model.volumeTexture.setMagnificationFilter(Filter.LINEAR);
@@ -1295,6 +1295,33 @@ function vtkOpenGLImageMapper(publicAPI, model) {
     if (ijkMode === SlicingMode.K || ijkMode === SlicingMode.NONE) {
       sliceOffset = nSlice - ext[4];
     }
+    // <--텍스처에 픽셀의 좌표 데이터를 저장-->
+    // <--GPU MPR 기능을 사용하지 않을 시 최소한의 크기만 가지도록 처리-->
+    if (model.renderable.getMprMode()) {
+      const MprCoordTexture = model.renderable
+        .getInputConnection()
+        .filter.getMprCoordTexture();
+      const dims = image.getDimensions();
+
+      model.MPRTexture.create2DFromRaw(
+        dims[0],
+        dims[1],
+        3,
+        VtkDataTypes.Uint16Array,
+        MprCoordTexture
+      );
+    } else {
+      model.MPRTexture.create2DFromRaw(
+        1,
+        1,
+        3,
+        VtkDataTypes.UNSIGNED_SHORT,
+        new Uint16Array(3).fill(1)
+      );
+    }
+    model.MPRTexture.activate();
+    model.MPRTexture.sendParameters();
+    model.MPRTexture.deactivate();
     // <--------------------->
     // <--텍스처에 볼륨 데이터를 저장-->
     if (model.volumeTextureString != 1) {
@@ -1571,6 +1598,7 @@ const DEFAULT_VALUES = {
   VBOBuildString: null,
   openGLTexture: null,
   // <--볼륨 데이터, 픽셀의 좌표 데이터를 저장할 텍스처 추가-->
+  MPRTexture: null,
   volumeTexture: null,
   volumeTextureString: null,
   cprVelocityTexture: null,
@@ -1609,6 +1637,9 @@ export function extend(publicAPI, model, initialValues = {}) {
   model.tris = vtkHelper.newInstance();
   model.openGLTexture = vtkOpenGLTexture.newInstance();
   // <--볼륨 데이터, 픽셀의 좌표 데이터를 저장할 텍스처 세팅-->
+  model.MPRTexture = vtkOpenGLTexture.newInstance({
+    resizable: true,
+  });
   model.volumeTexture = vtkOpenGLTexture.newInstance();
   // <--------------------->
   model.cprVelocityTexture = vtkOpenGLTexture.newInstance();
