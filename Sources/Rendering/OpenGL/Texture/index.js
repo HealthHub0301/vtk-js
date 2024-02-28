@@ -7,10 +7,11 @@ import vtkViewNode from 'vtk.js/Sources/Rendering/SceneGraph/ViewNode';
 
 import { registerOverride } from 'vtk.js/Sources/Rendering/OpenGL/ViewNodeFactory';
 
+import wasm from './wasm';
+
 const { Wrap, Filter } = Constants;
 const { VtkDataTypes } = vtkDataArray;
 const { vtkDebugMacro, vtkErrorMacro, vtkWarningMacro } = macro;
-const { toHalf } = HalfFloat;
 
 // ----------------------------------------------------------------------------
 // vtkOpenGLTexture methods
@@ -657,11 +658,8 @@ function vtkOpenGLTexture(publicAPI, model) {
     if (halfFloat) {
       for (let idx = 0; idx < data.length; idx++) {
         if (data[idx]) {
-          const newArray = new Uint16Array(pixCount);
           const src = data[idx];
-          for (let i = 0; i < pixCount; i++) {
-            newArray[i] = toHalf(src[i]);
-          }
+          const newArray = wasm.transformHalfFloat(src, pixCount);
           pixData.push(newArray);
         } else {
           pixData.push(null);
