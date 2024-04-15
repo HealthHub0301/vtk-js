@@ -327,10 +327,13 @@ function vtkOpenGLImageMapper(publicAPI, model) {
             ).result;
           }
           if (model.renderable.getCprMode()) {
+            /* volume shader 의 cpr thickness blend를 image mapper로 옮겨옴 */
             FSSource = vtkShaderProgram.substitute(
               FSSource,
               '//VTK::TCoord::Impl',
               [
+                /* aspect ratio를 유지하면서 화면에 꽉차게 그리기 위해서 가로 / 세로 길이 비교를 해서 짧은쪽 coordinate을 변환한다. */
+                /* 중앙으로 배치하고 남는 공간은 까맣게 처리한다. */
                 `
                 vec2 st = tcoordVCVSOutput.xy;
                 if (ciwidth > ciheight) {
@@ -1300,6 +1303,8 @@ function vtkOpenGLImageMapper(publicAPI, model) {
     // <--텍스처에 픽셀의 좌표 데이터를 저장-->
     // <--GPU MPR 기능을 사용하지 않을 시 최소한의 크기만 가지도록 처리-->
     if (model.renderable.getMprMode()) {
+      /* Imaging/Core/ImageReslice/index.js에서 계산하는 좌표값 */
+      /* 축이 움직임에 따라 volume의 어느 좌표를 조회해야하는지를 계산해서 텍스쳐에 저장한다 */
       const MprCoordTexture = model.renderable
         .getInputConnection()
         .filter.getMprCoordTexture();
@@ -1331,6 +1336,8 @@ function vtkOpenGLImageMapper(publicAPI, model) {
         .getPointData()
         .getScalars()
         .getDataType();
+      /* CPR, MPR 등 볼륨 전체의 데이터가 필요한 경우에 original data에서 volume 정보를 가져옴 */
+      /* 3DViewer-React ResliceRenderer / CprRenderer 참고 */
       const volScalars = model.renderable
         .getOriginalData()
         ?.getPointData()

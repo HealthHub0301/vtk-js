@@ -247,6 +247,7 @@ function vtkKochanekSpline1D(publicAPI, model) {
     );
   };
 
+  /* 3DViewer-React 구현을 위해 속도 계산 API 추가 */
   publicAPI.getVelocity = (intervalIndex, t) => {
     const t2 = 2 * t;
     const t3 = 3 * t * t;
