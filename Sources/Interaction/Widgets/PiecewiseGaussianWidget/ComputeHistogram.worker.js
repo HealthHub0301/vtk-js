@@ -7,6 +7,7 @@ registerWebworker(function (message, emit) {
   var min = message.min;
   var max = message.max;
 
+  /* Add rescale option in computing histogram for Gaussian Widget */
   var rescaleSlope = message.rescaleSlope || 1;
   var rescaleIntercept = message.rescaleIntercept || 0;
 

@@ -89,6 +89,7 @@ export function arrayMax(arr, offset = 0, stride = 1) {
   return maxValue;
 }
 
+/* Add rescale option to support rescaling in Gaussian Widget */
 export function arrayRange(
   arr,
   offset = 0,

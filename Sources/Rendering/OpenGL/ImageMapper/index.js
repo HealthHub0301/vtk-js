@@ -772,7 +772,9 @@ function vtkOpenGLImageMapper(publicAPI, model) {
       const oglScale = oglShiftScale.scale / cw;
       const oglShift = (oglShiftScale.shift - cl) / cw + 0.5;
 
+      /* shift와 scale이 전부 texel value에 적용되는 shift, scale 연산의 집합체 */
       const scale = rescaleSlope * oglScale;
+      /* ax + b에서 x를 c만큼 shift하면 전체 shift 값을 a(x + c) + b -> ax + (ac + b) */
       const shift = rescaleIntercept * oglScale + oglShift;
       cellBO.getProgram().setUniformf(`cshift${i}`, shift);
       cellBO.getProgram().setUniformf(`cscale${i}`, scale);
