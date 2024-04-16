@@ -366,6 +366,9 @@ function vtkImageData(publicAPI, model) {
     // Assumed the index here is within 0 <-> scalarData.length, but doesn't hurt to check upstream
     return publicAPI.computeOffsetIndex(index);
   };
+  /* Add rescale option to support rescaling in Volume Picker
+   * 볼륨 상 측정 기능이 제대로 동작하지 않는 버그 수정
+   */
   /**
    * @param {Number[]} xyz the [x,y,z] Array in world coordinates
    * @param {Number?} comp the scalar component index for multi-component scalars

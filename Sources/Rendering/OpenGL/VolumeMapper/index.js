@@ -1018,6 +1018,8 @@ function vtkOpenGLVolumeMapper(publicAPI, model) {
       program.setUniformf(`cshift${i}`, cshift);
       program.setUniformf(`cscale${i}`, cScale);
     }
+    /* Volume은 shader 내에서 rescaling 적용 */
+    /* slope은 그대로지만 intercept는 fragment space([0,1])에 맞게 normalize */
     program.setUniformf('rescaleSlope', model.renderable.getRescaleSlope());
     program.setUniformf(
       'rescaleIntercept',

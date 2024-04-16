@@ -74,6 +74,7 @@ function vtkSpline3D(publicAPI, model) {
     model.splineZ.getValue(intervalIndex, t),
   ];
 
+  /* 3DViewer-React 구현을 위해 속도 계산 API 추가 */
   publicAPI.getVelocity = (intervalIndex, t) => [
     model.splineX.getVelocity(intervalIndex, t),
     model.splineY.getVelocity(intervalIndex, t),

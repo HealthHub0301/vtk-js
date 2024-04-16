@@ -496,6 +496,7 @@ function vtkPiecewiseGaussianWidget(publicAPI, model) {
   // information to choose which component you want to extract the histogram
   // from.
 
+  /* See 3DViewer-React GaussianWidget::bind */
   publicAPI.setDataArray = (
     array,
     {
